@@ -1,0 +1,91 @@
+:root {
+  color: #dce4ef;
+  background: #0d121b;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at 10% 0%, #1e3352, #0d121b 45%);
+}
+
+.layout {
+  min-height: 100vh;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.panel {
+  border: 1px solid #2a3547;
+  background: #121a28d9;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a3547;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+select,
+button {
+  color: #dce4ef;
+  background: #1b2738;
+  border: 1px solid #3f516d;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+#editor {
+  width: 100%;
+  min-height: 48vh;
+  resize: vertical;
+  border: 0;
+  background: #0d1422;
+  color: #dce4ef;
+  padding: 12px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 14px;
+}
+
+#logs {
+  margin: 0;
+  padding: 10px 12px;
+  min-height: 120px;
+  border-top: 1px solid #2a3547;
+  background: #0a101c;
+  overflow: auto;
+  font-family: Consolas, "Courier New", monospace;
+}
+
+#scene {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+  display: block;
+}
+
+@media (max-width: 960px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

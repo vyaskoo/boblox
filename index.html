@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>boblox</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel">
+        <header class="panel-header">
+          <div class="left">
+            <label for="language">Язык</label>
+            <select id="language">
+              <option value="luau">Luau</option>
+              <option value="python">Python</option>
+            </select>
+          </div>
+          <button id="runBtn" type="button">Run</button>
+        </header>
+        <textarea id="editor" spellcheck="false"></textarea>
+        <pre id="logs">ready</pre>
+      </section>
+
+      <section class="panel">
+        <header class="panel-header">World Preview</header>
+        <canvas id="scene"></canvas>
+      </section>
+    </main>
+
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
