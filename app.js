@@ -38,6 +38,8 @@ const peerState = {
   room: null,
   channel: null,
   timer: null,
+  syncTimeout: null,
+  awaitingWorldSync: false,
   remotes: new Map(),
   lastSentAt: 0
 };
@@ -48,6 +50,12 @@ const world = {
   camera: null,
   light: null,
   floor: null,
+  floorSize: 70,
+  floorColor: "#4f8f4f",
+  skyMode: "day",
+  sunIntensity: 0.95,
+  lightColor: "#ffffff",
+  ambientColor: "#000000",
   playerRoot: null,
   playerBody: null,
   playerHead: null,
@@ -56,6 +64,7 @@ const world = {
   playerHeadColor: "#f2d2a5",
   speed: 8,
   jumpPower: 9,
+  viewMode: "third",
   velocityY: 0,
   grounded: false,
   gravity: -22,
@@ -110,6 +119,11 @@ connectBtn.addEventListener("click", () => {
 window.addEventListener("keydown", (event) => world.keys.add(event.code));
 window.addEventListener("keyup", (event) => world.keys.delete(event.code));
 window.addEventListener("beforeunload", () => disconnectRoom());
+window.addEventListener("keydown", (event) => {
+  if (event.code === "KeyV") {
+    toggleViewMode();
+  }
+});
 
 function setupScene() {
   world.engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
@@ -133,6 +147,7 @@ function setupScene() {
 
   createFloor(70, "#4f8f4f");
   createPlayer("Noob");
+  setViewMode("third");
 
   world.engine.runRenderLoop(() => {
     const dt = world.engine.getDeltaTime() / 1000;
@@ -231,6 +246,16 @@ function executeCommand(fn, args, logs) {
   if (fn === "setcameramode") {
     setCameraMode(String(args[0] ?? "follow"));
     logs.push(`[camera] mode=${world.cameraMode}`);
+    return true;
+  }
+  if (fn === "setviewmode") {
+    setViewMode(String(args[0] ?? "third"));
+    logs.push(`[camera] view=${world.viewMode}`);
+    return true;
+  }
+  if (fn === "toggleview") {
+    toggleViewMode();
+    logs.push(`[camera] view=${world.viewMode}`);
     return true;
   }
   if (fn === "focuspart") {
@@ -455,6 +480,7 @@ function createPlayer(name) {
   world.playerHead.position.y = 1.25;
   setPlayerColor("#2e86de", "#f2d2a5");
   world.camera.lockedTarget = world.playerRoot;
+  applyViewMode();
   broadcastNow();
 }
 
@@ -515,33 +541,72 @@ function setCameraMode(mode) {
   world.camera.lockedTarget = world.playerRoot;
 }
 
+function setViewMode(mode) {
+  const value = String(mode || "third").toLowerCase();
+  world.viewMode = value === "first" ? "first" : "third";
+  applyViewMode();
+}
+
+function toggleViewMode() {
+  setViewMode(world.viewMode === "third" ? "first" : "third");
+}
+
+function applyViewMode() {
+  if (!world.camera || !world.playerRoot) return;
+  if (world.viewMode === "first") {
+    world.camera.lockedTarget = world.playerHead || world.playerRoot;
+    world.camera.radius = 0.12;
+    world.camera.lowerRadiusLimit = 0.12;
+    world.camera.upperRadiusLimit = 0.12;
+    if (world.playerBody) world.playerBody.isVisible = false;
+    if (world.playerHead) world.playerHead.isVisible = false;
+    return;
+  }
+  world.camera.lockedTarget = world.playerRoot;
+  world.camera.radius = Math.max(world.camera.radius, 12);
+  world.camera.lowerRadiusLimit = 8;
+  world.camera.upperRadiusLimit = 90;
+  if (world.playerBody) world.playerBody.isVisible = true;
+  if (world.playerHead) world.playerHead.isVisible = true;
+}
+
 function createFloor(size, color) {
   const floorSize = Number.isFinite(size) ? Math.max(8, Math.min(500, size)) : 60;
+  const floorColor = String(color || "#4f8f4f");
+  world.floorSize = floorSize;
+  world.floorColor = floorColor;
   if (world.floor) world.floor.dispose();
   world.floor = BABYLON.MeshBuilder.CreateGround("floor", { width: floorSize, height: floorSize }, world.scene);
   world.floor.position.y = 0;
   const mat = new BABYLON.StandardMaterial("floorMat", world.scene);
-  mat.diffuseColor = parseColor(color, new BABYLON.Color3(0.31, 0.56, 0.31));
+  mat.diffuseColor = parseColor(floorColor, new BABYLON.Color3(0.31, 0.56, 0.31));
   world.floor.material = mat;
 }
 
 function setSky(mode) {
-  const value = String(mode || "day").toLowerCase();
-  if (value === "night") return (world.scene.clearColor = new BABYLON.Color4(0.05, 0.07, 0.13, 1));
-  if (value === "sunset") return (world.scene.clearColor = new BABYLON.Color4(0.98, 0.56, 0.32, 1));
-  if (value === "day") return (world.scene.clearColor = new BABYLON.Color4(0.66, 0.83, 0.97, 1));
+  const value = String(mode || "day");
+  world.skyMode = value;
+  const normalized = value.toLowerCase();
+  if (normalized === "night") return (world.scene.clearColor = new BABYLON.Color4(0.05, 0.07, 0.13, 1));
+  if (normalized === "sunset") return (world.scene.clearColor = new BABYLON.Color4(0.98, 0.56, 0.32, 1));
+  if (normalized === "day") return (world.scene.clearColor = new BABYLON.Color4(0.66, 0.83, 0.97, 1));
   const c = parseColor(mode, new BABYLON.Color3(0.66, 0.83, 0.97));
   world.scene.clearColor = new BABYLON.Color4(c.r, c.g, c.b, 1);
 }
 
 function setSunIntensity(value) {
-  if (Number.isFinite(value)) world.light.intensity = Math.max(0, Math.min(4, value));
+  if (Number.isFinite(value)) {
+    world.sunIntensity = Math.max(0, Math.min(4, value));
+    world.light.intensity = world.sunIntensity;
+  }
 }
 function setLightColor(color) {
-  world.light.diffuse = parseColor(color, new BABYLON.Color3(1, 1, 1));
+  world.lightColor = String(color || "#ffffff");
+  world.light.diffuse = parseColor(world.lightColor, new BABYLON.Color3(1, 1, 1));
 }
 function setAmbientLight(color) {
-  world.scene.ambientColor = parseColor(color, new BABYLON.Color3(1, 1, 1));
+  world.ambientColor = String(color || "#000000");
+  world.scene.ambientColor = parseColor(world.ambientColor, new BABYLON.Color3(1, 1, 1));
 }
 
 function clearWorld() {
@@ -564,7 +629,8 @@ function spawnBlock(name, x, y, z, sx, sy, sz, color) {
     anchored: true,
     velocityY: 0,
     spinDegPerSec: new BABYLON.Vector3(0, 0, 0),
-    pulse: null
+    pulse: null,
+    materialKind: "standard"
   };
   const mat = new BABYLON.StandardMaterial(`${partName}-mat`, world.scene);
   mat.diffuseColor = parseColor(color, new BABYLON.Color3(0.64, 0.76, 1));
@@ -586,7 +652,8 @@ function clonePart(sourceName, newName) {
     anchored: srcMeta.anchored !== false,
     velocityY: Number(srcMeta.velocityY || 0),
     spinDegPerSec: srcMeta.spinDegPerSec ? srcMeta.spinDegPerSec.clone() : new BABYLON.Vector3(0, 0, 0),
-    pulse: null
+    pulse: null,
+    materialKind: String(srcMeta.materialKind || "standard")
   };
   const mat = new BABYLON.StandardMaterial(`${cloneName}-mat`, world.scene);
   const srcMat = ensureStandardMaterial(src);
@@ -666,6 +733,8 @@ function setPartMaterial(name, material) {
   if (!mesh) return;
   const mat = ensureStandardMaterial(mesh);
   const key = String(material || "standard").toLowerCase();
+  mesh.metadata = mesh.metadata || {};
+  mesh.metadata.materialKind = key;
   if (key === "metal") {
     mat.specularColor = new BABYLON.Color3(0.9, 0.9, 0.9);
     mat.roughness = 0.2;
@@ -730,17 +799,25 @@ function stopPulse(name) {
 
 function updatePlayer(dt) {
   if (!world.playerRoot) return;
-  const dir = new BABYLON.Vector3(0, 0, 0);
-  if (world.keys.has("KeyW")) dir.z += 1;
-  if (world.keys.has("KeyS")) dir.z -= 1;
-  if (world.keys.has("KeyA")) dir.x -= 1;
-  if (world.keys.has("KeyD")) dir.x += 1;
+  const inputX = (world.keys.has("KeyD") ? 1 : 0) - (world.keys.has("KeyA") ? 1 : 0);
+  const inputZ = (world.keys.has("KeyW") ? 1 : 0) - (world.keys.has("KeyS") ? 1 : 0);
   if (world.keys.has("Space")) jump(world.jumpPower);
-  if (dir.length() > 0) {
-    dir.normalize();
-    world.playerRoot.position.x += dir.x * world.speed * dt;
-    world.playerRoot.position.z += dir.z * world.speed * dt;
-    world.playerRoot.rotation.y = Math.atan2(dir.x, dir.z);
+
+  const cameraForward = world.camera.getForwardRay().direction;
+  const forward = new BABYLON.Vector3(cameraForward.x, 0, cameraForward.z);
+  if (forward.lengthSquared() < 1e-6) {
+    forward.set(0, 0, 1);
+  } else {
+    forward.normalize();
+  }
+  const right = new BABYLON.Vector3(forward.z, 0, -forward.x);
+  const move = right.scale(inputX).add(forward.scale(inputZ));
+
+  if (move.lengthSquared() > 1e-6) {
+    move.normalize();
+    world.playerRoot.position.x += move.x * world.speed * dt;
+    world.playerRoot.position.z += move.z * world.speed * dt;
+    world.playerRoot.rotation.y = Math.atan2(move.x, move.z);
   }
   world.velocityY += world.gravity * dt;
   world.playerRoot.position.y += world.velocityY * dt;
@@ -787,10 +864,18 @@ function connectRoom(roomName) {
   if (!room) return;
   disconnectRoom(false);
   peerState.room = room;
+  peerState.awaitingWorldSync = true;
   peerState.channel = new BroadcastChannel(`boblox_room_${room}`);
   peerState.channel.onmessage = handlePeerMessage;
   peerState.timer = window.setInterval(() => maybeBroadcastLocalState(true), 120);
-  setMultiplayerStatus(`connected:${room}`);
+  if (peerState.syncTimeout) clearTimeout(peerState.syncTimeout);
+  peerState.syncTimeout = window.setTimeout(() => {
+    if (peerState.awaitingWorldSync) {
+      peerState.awaitingWorldSync = false;
+      setMultiplayerStatus(`connected:${room}`);
+    }
+  }, 1200);
+  setMultiplayerStatus(`syncing:${room}`);
   postPeerMessage({ type: "hello", state: getLocalSnapshot() });
 }
 
@@ -804,6 +889,11 @@ function disconnectRoom(updateStatus = true) {
     peerState.channel.close();
     peerState.channel = null;
   }
+  if (peerState.syncTimeout) {
+    clearTimeout(peerState.syncTimeout);
+    peerState.syncTimeout = null;
+  }
+  peerState.awaitingWorldSync = false;
   peerState.room = null;
   for (const remote of peerState.remotes.values()) {
     remote.root.dispose();
@@ -818,10 +908,24 @@ function handlePeerMessage(event) {
   if (data.type === "hello") {
     upsertRemotePlayer(data.id, data.state);
     postPeerMessage({ type: "state", state: getLocalSnapshot() });
+    postPeerMessage({ type: "room_state", targetId: data.id, snapshot: buildWorldSnapshot() });
     return;
   }
   if (data.type === "state") {
     upsertRemotePlayer(data.id, data.state);
+    return;
+  }
+  if (data.type === "room_state") {
+    if (data.targetId !== peerState.id || !peerState.awaitingWorldSync) {
+      return;
+    }
+    applyWorldSnapshot(data.snapshot);
+    peerState.awaitingWorldSync = false;
+    if (peerState.syncTimeout) {
+      clearTimeout(peerState.syncTimeout);
+      peerState.syncTimeout = null;
+    }
+    setMultiplayerStatus(`connected:${peerState.room}`);
     return;
   }
   if (data.type === "run_script") {
@@ -911,6 +1015,88 @@ function setMultiplayerStatus(text) {
   mpStatusEl.textContent = text;
 }
 
+function buildWorldSnapshot() {
+  const parts = [];
+  for (const [name, mesh] of world.parts.entries()) {
+    if (!mesh || mesh.isDisposed()) continue;
+    const mat = ensureStandardMaterial(mesh);
+    const meta = mesh.metadata || {};
+    parts.push({
+      name,
+      x: mesh.position.x,
+      y: mesh.position.y,
+      z: mesh.position.z,
+      rx: mesh.rotation.x,
+      ry: mesh.rotation.y,
+      rz: mesh.rotation.z,
+      sx: mesh.scaling.x,
+      sy: mesh.scaling.y,
+      sz: mesh.scaling.z,
+      color: colorToHex(mat.diffuseColor, "#a4c2ff"),
+      emissive: colorToHex(mat.emissiveColor, "#000000"),
+      alpha: Number.isFinite(mat.alpha) ? mat.alpha : 1,
+      anchored: meta.anchored !== false,
+      materialKind: String(meta.materialKind || "standard"),
+      spin: meta.spinDegPerSec
+        ? { x: meta.spinDegPerSec.x, y: meta.spinDegPerSec.y, z: meta.spinDegPerSec.z }
+        : { x: 0, y: 0, z: 0 },
+      pulse: meta.pulse
+        ? { speed: meta.pulse.speed, min: meta.pulse.min, max: meta.pulse.max, t: meta.pulse.t }
+        : null
+    });
+  }
+
+  return {
+    floorSize: world.floorSize,
+    floorColor: world.floorColor,
+    skyMode: world.skyMode,
+    sunIntensity: world.sunIntensity,
+    lightColor: world.lightColor,
+    ambientColor: world.ambientColor,
+    gravity: world.gravity,
+    parts
+  };
+}
+
+function applyWorldSnapshot(snapshot) {
+  if (!snapshot) return;
+  clearWorld();
+  createFloor(Number(snapshot.floorSize ?? 70), String(snapshot.floorColor ?? "#4f8f4f"));
+  setSky(String(snapshot.skyMode ?? "day"));
+  setSunIntensity(Number(snapshot.sunIntensity ?? 0.95));
+  setLightColor(String(snapshot.lightColor ?? "#ffffff"));
+  setAmbientLight(String(snapshot.ambientColor ?? "#000000"));
+  setGravity(Number(snapshot.gravity ?? -22));
+
+  const parts = Array.isArray(snapshot.parts) ? snapshot.parts : [];
+  for (const part of parts) {
+    spawnBlock(
+      String(part.name ?? `Part${world.spawnIndex + 1}`),
+      Number(part.x ?? 0),
+      Number(part.y ?? 1),
+      Number(part.z ?? 0),
+      Number(part.sx ?? 1),
+      Number(part.sy ?? 1),
+      Number(part.sz ?? 1),
+      String(part.color ?? "#a4c2ff")
+    );
+    const name = String(part.name);
+    const mesh = getPart(name);
+    if (!mesh) continue;
+    mesh.rotation.set(Number(part.rx ?? 0), Number(part.ry ?? 0), Number(part.rz ?? 0));
+    setPartMaterial(name, String(part.materialKind ?? "standard"));
+    setPartTransparency(name, 1 - Number(part.alpha ?? 1));
+    setPartEmissive(name, String(part.emissive ?? "#000000"), 1);
+    setAnchored(name, part.anchored !== false);
+    if (part.spin) {
+      spinPart(name, Number(part.spin.x ?? 0), Number(part.spin.y ?? 0), Number(part.spin.z ?? 0));
+    }
+    if (part.pulse) {
+      pulsePart(name, Number(part.pulse.speed ?? 1), Number(part.pulse.min ?? 1), Number(part.pulse.max ?? 1));
+    }
+  }
+}
+
 function getPart(name) {
   return world.parts.get(String(name || ""));
 }
@@ -939,6 +1125,14 @@ function parseColor(value, fallback) {
   } catch (_) {
     return fallback;
   }
+}
+
+function colorToHex(color, fallback = "#ffffff") {
+  if (!color || !Number.isFinite(color.r) || !Number.isFinite(color.g) || !Number.isFinite(color.b)) {
+    return fallback;
+  }
+  const hex = color.toHexString?.();
+  return typeof hex === "string" ? hex : fallback;
 }
 
 setupScene();

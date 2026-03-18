@@ -23,6 +23,8 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `jump(8)`
 - `lookAt(10, 1, 10)`
 - `setCameraMode("follow" | "free")`
+- `setViewMode("first" | "third")`
+- `toggleView()`
 - `createFloor(80, "#4f8f4f")`
 - `createBaseplate(80, "#4f8f4f")`
 - `setSky("day" | "sunset" | "night" | "#87ceeb")`
@@ -62,9 +64,11 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - Use `Room` input + `Connect` button.
 - Other players appear as live avatars in the scene.
 - `Run` now broadcasts the script to all players in the same room, so code executes for everyone.
+- New players now receive current shared world state on join (floor, sky, parts, materials, animations).
 - This uses `BroadcastChannel`, so it works between tabs/windows of the same site origin (browser-local).
 
 ## Controls
 
-- `W A S D` move player
+- `W A S D` move relative to camera direction
 - `Space` jump
+- `V` toggle first/third person
