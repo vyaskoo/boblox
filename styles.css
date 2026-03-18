@@ -167,3 +167,61 @@ body.focus-mode .layout > .panel:last-child .panel-header {
 body.focus-mode #scene {
   min-height: calc(100vh - 44px);
 }
+
+.mobile-hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  display: none;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 14px;
+  z-index: 20;
+}
+
+body.mobile-mode .mobile-hud {
+  display: flex;
+}
+
+.pad {
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  border: 1px solid #6a86aa99;
+  background: #14233899;
+  position: relative;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.knob {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #96b7dfcc;
+  position: absolute;
+  left: 38px;
+  top: 38px;
+}
+
+.mobile-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.look-pad {
+  width: 150px;
+  height: 120px;
+  border-radius: 14px;
+}
+
+.jump-btn {
+  pointer-events: auto;
+  touch-action: none;
+  min-width: 90px;
+  min-height: 48px;
+  border-radius: 12px;
+  font-weight: 700;
+}

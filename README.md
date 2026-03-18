@@ -78,6 +78,7 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `Fullscreen` button: opens the 3D viewport in native fullscreen.
 - `Focus Mode` button: hides editor UI and switches to full viewport mode in the same tab.
 - `Esc` exits fullscreen; pressing `Esc` again exits focus mode.
+- In first-person on desktop, mouse uses pointer lock for FPS-style camera look.
 
 ## Multiplayer (no backend)
 
@@ -102,6 +103,7 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `Shift` sprint
 - `Space` jump
 - `V` toggle first/third person
+- Mobile auto-detection: shows touch joystick + look pad + jump button only on mobile/touch devices.
 
 ## Movement Notes
 

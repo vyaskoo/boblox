@@ -33,6 +33,15 @@ const serverInputEl = document.getElementById("serverInput");
 const connectBtn = document.getElementById("connectBtn");
 const mpStatusEl = document.getElementById("mpStatus");
 const canvas = document.getElementById("scene");
+const mobileHudEl = document.getElementById("mobileHud");
+const movePadEl = document.getElementById("movePad");
+const moveKnobEl = document.getElementById("moveKnob");
+const lookPadEl = document.getElementById("lookPad");
+const jumpBtnEl = document.getElementById("jumpBtn");
+
+const isMobileDevice =
+  /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+  ((window.matchMedia?.("(pointer:coarse)")?.matches ?? false) && Math.min(window.innerWidth, window.innerHeight) <= 1024);
 
 const peerState = {
   id: `p_${Math.random().toString(36).slice(2, 10)}`,
@@ -100,7 +109,18 @@ const world = {
   touchCooldownMs: 120,
   triggerEnterHandlers: new Map(),
   triggerExitHandlers: new Map(),
-  triggerActive: new Set()
+  triggerActive: new Set(),
+  pointerLocked: false,
+  mobileEnabled: false,
+  mobileMoveX: 0,
+  mobileMoveZ: 0,
+  mobileLookDX: 0,
+  mobileLookDY: 0,
+  mobileJumpPressed: false,
+  moveTouchId: null,
+  lookTouchId: null,
+  lookLastX: 0,
+  lookLastY: 0
 };
 
 editorEl.value = defaults.luau;
@@ -112,6 +132,10 @@ if (wsQuery) {
 if (new URLSearchParams(window.location.search).get("sandbox") === "1") {
   document.body.classList.add("focus-mode");
   sandboxBtn.textContent = "Exit Focus";
+}
+
+if (isMobileDevice) {
+  document.body.classList.add("mobile-mode");
 }
 
 setMultiplayerStatus("offline");
@@ -172,6 +196,22 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+canvas.addEventListener("click", () => {
+  if (!isMobileDevice) {
+    requestPointerLockIfNeeded();
+  }
+});
+
+document.addEventListener("pointerlockchange", () => {
+  world.pointerLocked = document.pointerLockElement === canvas;
+});
+
+document.addEventListener("mousemove", (event) => {
+  if (!world.pointerLocked) return;
+  if (world.viewMode !== "first") return;
+  applyLookDelta(event.movementX, event.movementY);
+});
+
 function enterFocusMode() {
   document.body.classList.add("focus-mode");
   sandboxBtn.textContent = "Exit Focus";
@@ -187,6 +227,140 @@ function exitFocusMode() {
     document.exitFullscreen?.().catch?.(() => {});
   }
   setTimeout(() => world.engine?.resize(), 80);
+}
+
+function requestPointerLockIfNeeded() {
+  const rotateWithMouse = world.viewMode === "first" && world.firstPersonRotateWithMouse;
+  if (!rotateWithMouse) return;
+  if (document.pointerLockElement === canvas) return;
+  canvas.requestPointerLock?.();
+}
+
+function applyLookDelta(deltaX, deltaY) {
+  if (!world.camera) return;
+  const factor = 0.002 * world.mouseSensitivity;
+  world.camera.alpha -= deltaX * factor;
+  world.camera.beta += deltaY * factor;
+  const lower = world.camera.lowerBetaLimit ?? BABYLON.Tools.ToRadians(10);
+  const upper = world.camera.upperBetaLimit ?? BABYLON.Tools.ToRadians(170);
+  world.camera.beta = Math.max(lower + 0.001, Math.min(upper - 0.001, world.camera.beta));
+}
+
+function setupMobileControls() {
+  if (!isMobileDevice || !mobileHudEl) return;
+  world.mobileEnabled = true;
+  mobileHudEl.setAttribute("aria-hidden", "false");
+
+  const stickRadius = 44;
+  const centerKnob = () => {
+    moveKnobEl.style.left = "38px";
+    moveKnobEl.style.top = "38px";
+  };
+  centerKnob();
+
+  movePadEl.addEventListener(
+    "touchstart",
+    (event) => {
+      if (world.moveTouchId !== null) return;
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      world.moveTouchId = touch.identifier;
+      event.preventDefault();
+    },
+    { passive: false }
+  );
+
+  movePadEl.addEventListener(
+    "touchmove",
+    (event) => {
+      if (world.moveTouchId === null) return;
+      let touch = null;
+      for (const t of event.changedTouches) {
+        if (t.identifier === world.moveTouchId) touch = t;
+      }
+      if (!touch) return;
+      const rect = movePadEl.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      let dx = touch.clientX - cx;
+      let dy = touch.clientY - cy;
+      const len = Math.hypot(dx, dy);
+      if (len > stickRadius) {
+        dx = (dx / len) * stickRadius;
+        dy = (dy / len) * stickRadius;
+      }
+      world.mobileMoveX = dx / stickRadius;
+      world.mobileMoveZ = -dy / stickRadius;
+      moveKnobEl.style.left = `${38 + dx}px`;
+      moveKnobEl.style.top = `${38 + dy}px`;
+      event.preventDefault();
+    },
+    { passive: false }
+  );
+
+  const endMove = () => {
+    world.moveTouchId = null;
+    world.mobileMoveX = 0;
+    world.mobileMoveZ = 0;
+    centerKnob();
+  };
+  movePadEl.addEventListener("touchend", endMove, { passive: true });
+  movePadEl.addEventListener("touchcancel", endMove, { passive: true });
+
+  lookPadEl.addEventListener(
+    "touchstart",
+    (event) => {
+      if (world.lookTouchId !== null) return;
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      world.lookTouchId = touch.identifier;
+      world.lookLastX = touch.clientX;
+      world.lookLastY = touch.clientY;
+      event.preventDefault();
+    },
+    { passive: false }
+  );
+
+  lookPadEl.addEventListener(
+    "touchmove",
+    (event) => {
+      if (world.lookTouchId === null) return;
+      let touch = null;
+      for (const t of event.changedTouches) {
+        if (t.identifier === world.lookTouchId) touch = t;
+      }
+      if (!touch) return;
+      world.mobileLookDX += touch.clientX - world.lookLastX;
+      world.mobileLookDY += touch.clientY - world.lookLastY;
+      world.lookLastX = touch.clientX;
+      world.lookLastY = touch.clientY;
+      event.preventDefault();
+    },
+    { passive: false }
+  );
+
+  const endLook = () => {
+    world.lookTouchId = null;
+    world.lookLastX = 0;
+    world.lookLastY = 0;
+  };
+  lookPadEl.addEventListener("touchend", endLook, { passive: true });
+  lookPadEl.addEventListener("touchcancel", endLook, { passive: true });
+
+  jumpBtnEl.addEventListener(
+    "touchstart",
+    (event) => {
+      world.mobileJumpPressed = true;
+      event.preventDefault();
+    },
+    { passive: false }
+  );
+  jumpBtnEl.addEventListener("touchend", () => {
+    world.mobileJumpPressed = false;
+  });
+  jumpBtnEl.addEventListener("touchcancel", () => {
+    world.mobileJumpPressed = false;
+  });
 }
 
 function setupScene() {
@@ -213,6 +387,7 @@ function setupScene() {
   createFloor(70, "#4f8f4f");
   createPlayer("Noob");
   setViewMode("third");
+  setupMobileControls();
 
   world.engine.runRenderLoop(() => {
     const dt = world.engine.getDeltaTime() / 1000;
@@ -779,7 +954,13 @@ function applyViewMode() {
     world.camera.upperRadiusLimit = 0.15;
     if (world.playerBody) world.playerBody.isVisible = false;
     if (world.playerHead) world.playerHead.isVisible = false;
+    if (!isMobileDevice) {
+      requestPointerLockIfNeeded();
+    }
     return;
+  }
+  if (document.pointerLockElement === canvas) {
+    document.exitPointerLock?.();
   }
   world.camera.lockedTarget = world.playerRoot;
   world.camera.radius = Math.max(world.camera.radius, 12);
@@ -1221,10 +1402,17 @@ function updatePlayer(dt) {
   if (!world.playerRoot) return;
   world.coyoteTimer = Math.max(0, world.coyoteTimer - dt);
   world.jumpBufferTimer = Math.max(0, world.jumpBufferTimer - dt);
-  const inputX = (world.keys.has("KeyD") ? 1 : 0) - (world.keys.has("KeyA") ? 1 : 0);
-  const inputZ = (world.keys.has("KeyW") ? 1 : 0) - (world.keys.has("KeyS") ? 1 : 0);
+  if (world.mobileEnabled && (world.mobileLookDX !== 0 || world.mobileLookDY !== 0)) {
+    applyLookDelta(world.mobileLookDX, world.mobileLookDY);
+    world.mobileLookDX = 0;
+    world.mobileLookDY = 0;
+  }
+  const inputX =
+    (world.keys.has("KeyD") ? 1 : 0) - (world.keys.has("KeyA") ? 1 : 0) + (world.mobileEnabled ? world.mobileMoveX : 0);
+  const inputZ =
+    (world.keys.has("KeyW") ? 1 : 0) - (world.keys.has("KeyS") ? 1 : 0) + (world.mobileEnabled ? world.mobileMoveZ : 0);
   const sprinting = world.keys.has("ShiftLeft") || world.keys.has("ShiftRight");
-  if (world.keys.has("Space")) jump(world.jumpPower);
+  if (world.keys.has("Space") || world.mobileJumpPressed) jump(world.jumpPower);
 
   const cameraForward = world.camera.getForwardRay().direction;
   const forward = new BABYLON.Vector3(cameraForward.x, 0, cameraForward.z);
