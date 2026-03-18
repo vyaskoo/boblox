@@ -195,8 +195,10 @@ connectBtn.addEventListener("click", () => {
 newRoomBtn.addEventListener("click", () => {
   const room = `room-${Math.random().toString(36).slice(2, 8)}`;
   roomInputEl.value = room;
-  connectRoom(room, (serverInputEl.value || "").trim());
   renderRoomQr();
+  qrWrapEl.removeAttribute("hidden");
+  qrBtn.textContent = "Hide QR";
+  connectRoom(room, (serverInputEl.value || "").trim());
 });
 
 qrBtn.addEventListener("click", () => {
@@ -1614,6 +1616,7 @@ function connectRoom(roomName, wsUrl = "") {
   peerState.room = room;
   peerState.awaitingWorldSync = true;
   peerState.transport = "websocket";
+  setMultiplayerStatus(`connecting:${room}:websocket`);
   peerState.socket = new WebSocket(peerState.wsUrl);
   peerState.socket.addEventListener("open", () => {
     sendTransportMessage({ type: "join", room, id: peerState.id });
@@ -1628,7 +1631,7 @@ function connectRoom(roomName, wsUrl = "") {
   });
   peerState.socket.addEventListener("close", () => {
     if (peerState.room === room) {
-      setMultiplayerStatus(`offline:${room}`);
+      setMultiplayerStatus(`offline:${room}:websocket`);
     }
   });
   peerState.socket.addEventListener("error", () => {
@@ -1807,7 +1810,7 @@ function deriveDefaultWsUrl() {
   if (host === "localhost" || host === "127.0.0.1") {
     return `${protocol}//${host}:8787`;
   }
-  return `${protocol}//${window.location.host}/ws`;
+  return "";
 }
 
 function renderRoomQr() {
@@ -1825,19 +1828,25 @@ function renderRoomQr() {
   shareUrlEl.textContent = share;
   qrCodeEl.innerHTML = "";
   if (typeof QRCode !== "undefined") {
+    const canvasEl = document.createElement("canvas");
     QRCode.toCanvas(
+      canvasEl,
       share,
       {
         width: 110,
         margin: 1,
         color: { dark: "#0d1220", light: "#ffffff" }
       },
-      (error, canvasEl) => {
-        if (!error && canvasEl) {
-          qrCodeEl.appendChild(canvasEl);
+      (error) => {
+        if (error) {
+          qrCodeEl.textContent = "QR error";
+          return;
         }
+        qrCodeEl.appendChild(canvasEl);
       }
     );
+  } else {
+    qrCodeEl.textContent = "QR lib missing";
   }
 }
 
