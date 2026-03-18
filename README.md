@@ -25,12 +25,17 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `setCameraMode("follow" | "free")`
 - `setViewMode("first" | "third")`
 - `toggleView()`
+- `setFirstPersonMouseRotate(true | false)` (default `true`)
+- `setThirdPersonMouseRotate(true | false)` (default `false`)
 - `createFloor(80, "#4f8f4f")`
 - `createBaseplate(80, "#4f8f4f")`
 - `setSky("day" | "sunset" | "night" | "#87ceeb")`
 - `setSunIntensity(1.2)`
 - `setAmbientLight("#ffffff")`
 - `setGravity(-24)`
+- `setSprintMultiplier(1.65)`
+- `setAcceleration(42)`
+- `setDeceleration(30)`
 - `spawnPart("Box", 2, 1, 0, 2, "#ff8844")`
 - `createPart(...)` (alias of `spawnPart`)
 - `spawnBlock("Pad", x, y, z, sx, sy, sz, "#44aaff")`
@@ -70,5 +75,6 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 ## Controls
 
 - `W A S D` move relative to camera direction
+- `Shift` sprint
 - `Space` jump
 - `V` toggle first/third person

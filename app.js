@@ -63,8 +63,17 @@ const world = {
   playerBodyColor: "#2e86de",
   playerHeadColor: "#f2d2a5",
   speed: 8,
+  sprintMultiplier: 1.65,
+  acceleration: 42,
+  deceleration: 30,
+  velocityXZ: new BABYLON.Vector2(0, 0),
+  standHeight: 1.6,
+  headOffset: 0.9,
+  collisionRadius: 0.42,
   jumpPower: 9,
   viewMode: "third",
+  firstPersonRotateWithMouse: true,
+  thirdPersonRotateWithMouse: false,
   velocityY: 0,
   grounded: false,
   gravity: -22,
@@ -253,6 +262,16 @@ function executeCommand(fn, args, logs) {
     logs.push(`[camera] view=${world.viewMode}`);
     return true;
   }
+  if (fn === "setfirstpersonmouserotate") {
+    setFirstPersonMouseRotate(args[0] !== false);
+    logs.push(`[camera] firstPersonMouseRotate=${world.firstPersonRotateWithMouse}`);
+    return true;
+  }
+  if (fn === "setthirdpersonmouserotate") {
+    setThirdPersonMouseRotate(args[0] === true);
+    logs.push(`[camera] thirdPersonMouseRotate=${world.thirdPersonRotateWithMouse}`);
+    return true;
+  }
   if (fn === "toggleview") {
     toggleViewMode();
     logs.push(`[camera] view=${world.viewMode}`);
@@ -303,6 +322,21 @@ function executeCommand(fn, args, logs) {
   if (fn === "setgravity") {
     setGravity(Number(args[0] ?? -22));
     logs.push(`[world] gravity=${world.gravity}`);
+    return true;
+  }
+  if (fn === "setsprintmultiplier") {
+    setSprintMultiplier(Number(args[0] ?? 1.65));
+    logs.push(`[player] sprintMultiplier=${world.sprintMultiplier.toFixed(2)}`);
+    return true;
+  }
+  if (fn === "setacceleration") {
+    setAcceleration(Number(args[0] ?? 42));
+    logs.push(`[player] acceleration=${world.acceleration.toFixed(1)}`);
+    return true;
+  }
+  if (fn === "setdeceleration") {
+    setDeceleration(Number(args[0] ?? 30));
+    logs.push(`[player] deceleration=${world.deceleration.toFixed(1)}`);
     return true;
   }
   if (fn === "clearworld") {
@@ -500,6 +534,15 @@ function setPlayerColor(bodyColor, headColor) {
 function setSpeed(speed) {
   if (Number.isFinite(speed)) world.speed = Math.max(1, Math.min(45, speed));
 }
+function setSprintMultiplier(value) {
+  if (Number.isFinite(value)) world.sprintMultiplier = Math.max(1, Math.min(3, value));
+}
+function setAcceleration(value) {
+  if (Number.isFinite(value)) world.acceleration = Math.max(1, Math.min(120, value));
+}
+function setDeceleration(value) {
+  if (Number.isFinite(value)) world.deceleration = Math.max(1, Math.min(120, value));
+}
 function setJumpPower(power) {
   if (Number.isFinite(power)) world.jumpPower = Math.max(2, Math.min(40, power));
 }
@@ -547,6 +590,14 @@ function setViewMode(mode) {
   applyViewMode();
 }
 
+function setFirstPersonMouseRotate(enabled) {
+  world.firstPersonRotateWithMouse = enabled !== false;
+}
+
+function setThirdPersonMouseRotate(enabled) {
+  world.thirdPersonRotateWithMouse = enabled === true;
+}
+
 function toggleViewMode() {
   setViewMode(world.viewMode === "third" ? "first" : "third");
 }
@@ -555,9 +606,9 @@ function applyViewMode() {
   if (!world.camera || !world.playerRoot) return;
   if (world.viewMode === "first") {
     world.camera.lockedTarget = world.playerHead || world.playerRoot;
-    world.camera.radius = 0.12;
-    world.camera.lowerRadiusLimit = 0.12;
-    world.camera.upperRadiusLimit = 0.12;
+    world.camera.radius = 0.15;
+    world.camera.lowerRadiusLimit = 0.15;
+    world.camera.upperRadiusLimit = 0.15;
     if (world.playerBody) world.playerBody.isVisible = false;
     if (world.playerHead) world.playerHead.isVisible = false;
     return;
@@ -801,6 +852,7 @@ function updatePlayer(dt) {
   if (!world.playerRoot) return;
   const inputX = (world.keys.has("KeyD") ? 1 : 0) - (world.keys.has("KeyA") ? 1 : 0);
   const inputZ = (world.keys.has("KeyW") ? 1 : 0) - (world.keys.has("KeyS") ? 1 : 0);
+  const sprinting = world.keys.has("ShiftLeft") || world.keys.has("ShiftRight");
   if (world.keys.has("Space")) jump(world.jumpPower);
 
   const cameraForward = world.camera.getForwardRay().direction;
@@ -811,21 +863,106 @@ function updatePlayer(dt) {
     forward.normalize();
   }
   const right = new BABYLON.Vector3(forward.z, 0, -forward.x);
-  const move = right.scale(inputX).add(forward.scale(inputZ));
-
-  if (move.lengthSquared() > 1e-6) {
-    move.normalize();
-    world.playerRoot.position.x += move.x * world.speed * dt;
-    world.playerRoot.position.z += move.z * world.speed * dt;
-    world.playerRoot.rotation.y = Math.atan2(move.x, move.z);
+  const moveDir = right.scale(inputX).add(forward.scale(inputZ));
+  if (moveDir.lengthSquared() > 1e-6) {
+    moveDir.normalize();
   }
+
+  const targetSpeed = world.speed * (sprinting ? world.sprintMultiplier : 1);
+  const targetVx = moveDir.x * targetSpeed;
+  const targetVz = moveDir.z * targetSpeed;
+  const accel = moveDir.lengthSquared() > 1e-6 ? world.acceleration : world.deceleration;
+  world.velocityXZ.x = moveTowards(world.velocityXZ.x, targetVx, accel * dt);
+  world.velocityXZ.y = moveTowards(world.velocityXZ.y, targetVz, accel * dt);
+
+  let nextX = world.playerRoot.position.x + world.velocityXZ.x * dt;
+  let nextZ = world.playerRoot.position.z;
+  if (collidesAt(nextX, nextZ, world.playerRoot.position.y)) {
+    nextX = world.playerRoot.position.x;
+    world.velocityXZ.x = 0;
+  }
+
+  nextZ = world.playerRoot.position.z + world.velocityXZ.y * dt;
+  if (collidesAt(nextX, nextZ, world.playerRoot.position.y)) {
+    nextZ = world.playerRoot.position.z;
+    world.velocityXZ.y = 0;
+  }
+
+  world.playerRoot.position.x = nextX;
+  world.playerRoot.position.z = nextZ;
+
+  const rotateWithMouse =
+    (world.viewMode === "first" && world.firstPersonRotateWithMouse) ||
+    (world.viewMode === "third" && world.thirdPersonRotateWithMouse);
+  if (rotateWithMouse) {
+    world.playerRoot.rotation.y = Math.atan2(forward.x, forward.z);
+  } else if (moveDir.lengthSquared() > 1e-6) {
+    world.playerRoot.rotation.y = Math.atan2(moveDir.x, moveDir.z);
+  }
+
   world.velocityY += world.gravity * dt;
-  world.playerRoot.position.y += world.velocityY * dt;
-  if (world.playerRoot.position.y <= 1.6) {
-    world.playerRoot.position.y = 1.6;
+  let nextY = world.playerRoot.position.y + world.velocityY * dt;
+  const groundY = computeGroundY(world.playerRoot.position.x, world.playerRoot.position.z, world.playerRoot.position.y, nextY);
+  if (nextY <= groundY) {
+    nextY = groundY;
     world.velocityY = 0;
     world.grounded = true;
+  } else {
+    world.grounded = false;
   }
+  world.playerRoot.position.y = nextY;
+}
+
+function moveTowards(current, target, maxDelta) {
+  if (Math.abs(target - current) <= maxDelta) return target;
+  return current + Math.sign(target - current) * maxDelta;
+}
+
+function collidesAt(x, z, y) {
+  const feet = y - world.standHeight;
+  const head = y + world.headOffset;
+  for (const mesh of world.parts.values()) {
+    if (!mesh || mesh.isDisposed()) continue;
+    const halfX = mesh.scaling.x * 0.5;
+    const halfY = mesh.scaling.y * 0.5;
+    const halfZ = mesh.scaling.z * 0.5;
+    const minX = mesh.position.x - halfX;
+    const maxX = mesh.position.x + halfX;
+    const minY = mesh.position.y - halfY;
+    const maxY = mesh.position.y + halfY;
+    const minZ = mesh.position.z - halfZ;
+    const maxZ = mesh.position.z + halfZ;
+    const verticalOverlap = head > minY && feet < maxY;
+    if (!verticalOverlap) continue;
+    const overlapX = x + world.collisionRadius > minX && x - world.collisionRadius < maxX;
+    const overlapZ = z + world.collisionRadius > minZ && z - world.collisionRadius < maxZ;
+    if (overlapX && overlapZ) return true;
+  }
+  return false;
+}
+
+function computeGroundY(x, z, prevY, nextY) {
+  let bestGround = world.standHeight;
+  const prevFeet = prevY - world.standHeight;
+  const nextFeet = nextY - world.standHeight;
+  for (const mesh of world.parts.values()) {
+    if (!mesh || mesh.isDisposed()) continue;
+    const halfX = mesh.scaling.x * 0.5;
+    const halfY = mesh.scaling.y * 0.5;
+    const halfZ = mesh.scaling.z * 0.5;
+    const minX = mesh.position.x - halfX;
+    const maxX = mesh.position.x + halfX;
+    const minZ = mesh.position.z - halfZ;
+    const maxZ = mesh.position.z + halfZ;
+    const topY = mesh.position.y + halfY;
+    const withinX = x + world.collisionRadius > minX && x - world.collisionRadius < maxX;
+    const withinZ = z + world.collisionRadius > minZ && z - world.collisionRadius < maxZ;
+    if (!withinX || !withinZ) continue;
+    if (prevFeet >= topY && nextFeet <= topY) {
+      bestGround = Math.max(bestGround, topY + world.standHeight);
+    }
+  }
+  return bestGround;
 }
 
 function updateDynamicParts(dt) {
