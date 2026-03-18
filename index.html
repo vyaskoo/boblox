@@ -27,9 +27,15 @@
         <div class="multiplayer">
           <label for="roomInput">Room</label>
           <input id="roomInput" value="main" />
-          <input id="serverInput" placeholder="wss://server.example/ws (optional)" />
+          <input id="serverInput" placeholder="wss://server.example/ws" />
           <button id="connectBtn" type="button">Connect</button>
+          <button id="newRoomBtn" type="button">New Room</button>
+          <button id="qrBtn" type="button">QR</button>
           <span id="mpStatus">offline</span>
+        </div>
+        <div id="qrWrap" class="qr-wrap" hidden>
+          <div id="qrCode"></div>
+          <div id="shareUrl" class="share-url"></div>
         </div>
         <div class="help">
           createPlayer("Noob"), spawnPart("Box", 2, 1, 0, 2, "#ff8844"), spawnBlock("Pad", 0, 0.5, 6, 6, 1, 6,
@@ -59,6 +65,7 @@
     </div>
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
-    <script src="./app.js?v=13"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="./app.js?v=14"></script>
   </body>
 </html>

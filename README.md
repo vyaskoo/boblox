@@ -80,22 +80,22 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `Esc` exits fullscreen; pressing `Esc` again exits focus mode.
 - In first-person on desktop, mouse uses pointer lock for FPS-style camera look.
 
-## Multiplayer (no backend)
+## Multiplayer (WebSocket only)
 
 - Use `Room` input + `Connect` button.
-- Other players appear as live avatars in the scene.
-- `Run` now broadcasts the script to all players in the same room, so code executes for everyone.
-- New players now receive current shared world state on join (floor, sky, parts, materials, animations).
-- This uses `BroadcastChannel`, so it works between tabs/windows of the same site origin (browser-local).
+- Fill `server` with your WebSocket relay URL (`ws://...` or `wss://...`).
+- `Run` executes for everyone in the same room.
+- New players receive the current shared world state on join.
+- `New Room` generates a room id and connects.
+- `QR` shows a scannable room link (with `room` + `ws` in URL) for phone join.
 
-## Multiplayer Between Devices (WebSocket)
+## Relay Server
 
 1. Run relay server from `server/`:
    - `npm install`
    - `npm start`
-2. Expose it on public URL (for example via VPS/Cloud/Render/Fly).
-3. In UI, put websocket URL into `server` field and connect room.
-4. Now rooms work across different devices/browsers.
+2. Expose it on public URL (VPS/Cloud/Render/Fly/etc).
+3. Put that URL into `server` field and connect the same room on phone + PC.
 
 ## Controls
 

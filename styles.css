@@ -100,6 +100,31 @@ button {
   font-family: Consolas, "Courier New", monospace;
 }
 
+.qr-wrap {
+  padding: 10px 12px;
+  border-top: 1px solid #2a3547;
+  background: #0f1624;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#qrCode {
+  width: 110px;
+  min-width: 110px;
+  height: 110px;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.share-url {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  color: #a8c0da;
+  word-break: break-all;
+}
+
 .help {
   padding: 8px 12px;
   border-top: 1px solid #2a3547;

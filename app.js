@@ -31,7 +31,12 @@ const sandboxBtn = document.getElementById("sandboxBtn");
 const roomInputEl = document.getElementById("roomInput");
 const serverInputEl = document.getElementById("serverInput");
 const connectBtn = document.getElementById("connectBtn");
+const newRoomBtn = document.getElementById("newRoomBtn");
+const qrBtn = document.getElementById("qrBtn");
 const mpStatusEl = document.getElementById("mpStatus");
+const qrWrapEl = document.getElementById("qrWrap");
+const qrCodeEl = document.getElementById("qrCode");
+const shareUrlEl = document.getElementById("shareUrl");
 const canvas = document.getElementById("scene");
 const mobileHudEl = document.getElementById("mobileHud");
 const movePadEl = document.getElementById("movePad");
@@ -46,9 +51,8 @@ const isMobileDevice =
 const peerState = {
   id: `p_${Math.random().toString(36).slice(2, 10)}`,
   room: null,
-  transport: "broadcast",
+  transport: "websocket",
   wsUrl: "",
-  channel: null,
   socket: null,
   timer: null,
   syncTimeout: null,
@@ -124,10 +128,13 @@ const world = {
 };
 
 editorEl.value = defaults.luau;
-const wsQuery = new URLSearchParams(window.location.search).get("ws");
-if (wsQuery) {
-  serverInputEl.value = wsQuery;
+const queryParams = new URLSearchParams(window.location.search);
+const wsQuery = queryParams.get("ws");
+const roomQuery = queryParams.get("room");
+if (roomQuery) {
+  roomInputEl.value = roomQuery;
 }
+setServerUrl(wsQuery || deriveDefaultWsUrl());
 
 if (new URLSearchParams(window.location.search).get("sandbox") === "1") {
   document.body.classList.add("focus-mode");
@@ -139,6 +146,7 @@ if (isMobileDevice) {
 }
 
 setMultiplayerStatus("offline");
+renderRoomQr();
 
 languageEl.addEventListener("change", () => {
   editorEl.value = defaults[languageEl.value];
@@ -149,7 +157,7 @@ runBtn.addEventListener("click", () => {
   const code = editorEl.value;
   const result = runScript(language, code);
   logsEl.textContent = result.join("\n");
-  if (peerState.channel || peerState.socket) {
+  if (peerState.socket) {
     sendPeerMessage({ type: "run_script", language, code });
   }
 });
@@ -183,6 +191,29 @@ connectBtn.addEventListener("click", () => {
   const wsUrl = (serverInputEl.value || "").trim();
   connectRoom(room || "main", wsUrl);
 });
+
+newRoomBtn.addEventListener("click", () => {
+  const room = `room-${Math.random().toString(36).slice(2, 8)}`;
+  roomInputEl.value = room;
+  connectRoom(room, (serverInputEl.value || "").trim());
+  renderRoomQr();
+});
+
+qrBtn.addEventListener("click", () => {
+  const hidden = qrWrapEl.hasAttribute("hidden");
+  if (hidden) {
+    renderRoomQr();
+    qrWrapEl.removeAttribute("hidden");
+    qrBtn.textContent = "Hide QR";
+  } else {
+    qrWrapEl.setAttribute("hidden", "");
+    qrBtn.textContent = "QR";
+  }
+});
+
+if (roomQuery) {
+  setTimeout(() => connectRoom(roomInputEl.value, serverInputEl.value), 0);
+}
 
 window.addEventListener("keydown", (event) => world.keys.add(event.code));
 window.addEventListener("keyup", (event) => world.keys.delete(event.code));
@@ -440,7 +471,7 @@ function executeCommand(fn, args, logs) {
   }
   if (fn === "setserver") {
     setServerUrl(String(args[0] ?? ""));
-    logs.push(`[mp] server=${peerState.wsUrl || "broadcast-only"}`);
+    logs.push(`[mp] server=${peerState.wsUrl || "not-set"}`);
     return true;
   }
   if (fn === "disconnectroom") {
@@ -1576,37 +1607,33 @@ function connectRoom(roomName, wsUrl = "") {
   if (!room) return;
   disconnectRoom(false);
   setServerUrl(wsUrl || serverInputEl.value || "");
+  if (!peerState.wsUrl) {
+    setMultiplayerStatus("ws-missing");
+    return;
+  }
   peerState.room = room;
   peerState.awaitingWorldSync = true;
-
-  const shouldUseWs = Boolean(peerState.wsUrl);
-  if (shouldUseWs) {
-    peerState.transport = "websocket";
-    peerState.socket = new WebSocket(peerState.wsUrl);
-    peerState.socket.addEventListener("open", () => {
-      sendTransportMessage({ type: "join", room, id: peerState.id });
-      onConnectedTransport(room);
-    });
-    peerState.socket.addEventListener("message", (event) => {
-      try {
-        const data = JSON.parse(String(event.data || "{}"));
-        handlePeerMessageData(data);
-      } catch (_) {}
-    });
-    peerState.socket.addEventListener("close", () => {
-      if (peerState.room === room) {
-        setMultiplayerStatus(`offline:${room}`);
-      }
-    });
-    peerState.socket.addEventListener("error", () => {
-      setMultiplayerStatus(`ws-error:${room}`);
-    });
-  } else {
-    peerState.transport = "broadcast";
-    peerState.channel = new BroadcastChannel(`boblox_room_${room}`);
-    peerState.channel.onmessage = (event) => handlePeerMessageData(event.data);
+  peerState.transport = "websocket";
+  peerState.socket = new WebSocket(peerState.wsUrl);
+  peerState.socket.addEventListener("open", () => {
+    sendTransportMessage({ type: "join", room, id: peerState.id });
     onConnectedTransport(room);
-  }
+    renderRoomQr();
+  });
+  peerState.socket.addEventListener("message", (event) => {
+    try {
+      const data = JSON.parse(String(event.data || "{}"));
+      handlePeerMessageData(data);
+    } catch (_) {}
+  });
+  peerState.socket.addEventListener("close", () => {
+    if (peerState.room === room) {
+      setMultiplayerStatus(`offline:${room}`);
+    }
+  });
+  peerState.socket.addEventListener("error", () => {
+    setMultiplayerStatus(`ws-error:${room}`);
+  });
 }
 
 function onConnectedTransport(room) {
@@ -1628,10 +1655,6 @@ function disconnectRoom(updateStatus = true) {
     clearInterval(peerState.timer);
     peerState.timer = null;
   }
-  if (peerState.channel) {
-    peerState.channel.close();
-    peerState.channel = null;
-  }
   if (peerState.socket) {
     peerState.socket.close();
     peerState.socket = null;
@@ -1642,7 +1665,7 @@ function disconnectRoom(updateStatus = true) {
   }
   peerState.awaitingWorldSync = false;
   peerState.room = null;
-  peerState.transport = "broadcast";
+  peerState.transport = "websocket";
   for (const remote of peerState.remotes.values()) {
     remote.root.dispose();
   }
@@ -1689,7 +1712,7 @@ function handlePeerMessageData(data) {
 }
 
 function maybeBroadcastLocalState(force = false) {
-  if ((!peerState.channel && !peerState.socket) || !world.playerRoot) return;
+  if (!peerState.socket || !world.playerRoot) return;
   const now = performance.now();
   if (!force && now - peerState.lastSentAt < 100) return;
   peerState.lastSentAt = now;
@@ -1718,14 +1741,8 @@ function sendPeerMessage(payload) {
 }
 
 function sendTransportMessage(payload) {
-  if (peerState.transport === "websocket") {
-    if (peerState.socket && peerState.socket.readyState === WebSocket.OPEN) {
-      peerState.socket.send(JSON.stringify(payload));
-    }
-    return;
-  }
-  if (peerState.channel) {
-    peerState.channel.postMessage(payload);
+  if (peerState.socket && peerState.socket.readyState === WebSocket.OPEN) {
+    peerState.socket.send(JSON.stringify(payload));
   }
 }
 
@@ -1779,6 +1796,48 @@ function setServerUrl(url) {
   peerState.wsUrl = value;
   if (serverInputEl) {
     serverInputEl.value = value;
+  }
+  renderRoomQr();
+}
+
+function deriveDefaultWsUrl() {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const host = window.location.hostname;
+  if (!host) return "";
+  if (host === "localhost" || host === "127.0.0.1") {
+    return `${protocol}//${host}:8787`;
+  }
+  return `${protocol}//${window.location.host}/ws`;
+}
+
+function renderRoomQr() {
+  if (!qrCodeEl || !shareUrlEl) return;
+  const room = (roomInputEl.value || "main").trim().toLowerCase() || "main";
+  const ws = (serverInputEl.value || "").trim();
+  const url = new URL(window.location.href);
+  url.searchParams.set("room", room);
+  if (ws) {
+    url.searchParams.set("ws", ws);
+  } else {
+    url.searchParams.delete("ws");
+  }
+  const share = url.toString();
+  shareUrlEl.textContent = share;
+  qrCodeEl.innerHTML = "";
+  if (typeof QRCode !== "undefined") {
+    QRCode.toCanvas(
+      share,
+      {
+        width: 110,
+        margin: 1,
+        color: { dark: "#0d1220", light: "#ffffff" }
+      },
+      (error, canvasEl) => {
+        if (!error && canvasEl) {
+          qrCodeEl.appendChild(canvasEl);
+        }
+      }
+    );
   }
 }
 
