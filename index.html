@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,7 +11,7 @@
       <section class="panel">
         <header class="panel-header">
           <div class="left">
-            <label for="language">Язык</label>
+            <label for="language">Language</label>
             <select id="language">
               <option value="luau">Luau</option>
               <option value="python">Python</option>
@@ -21,8 +21,9 @@
         </header>
         <textarea id="editor" spellcheck="false"></textarea>
         <div class="help">
-          print("text"), createPlayer("Noob"), createFloor(60, "#3f7f3f"), setSky("day|sunset|night"), setSpeed(8),
-          movePlayer(2, 0), jump(8), teleport(0, 3, 0), spawnPart("Box", 2, 1, 0, 2, "#ff8844")
+          createPlayer("Noob"), setPlayerColor("#2e86de", "#f2d2a5"), createFloor(80, "#4f8f4f"), setSky("day"),
+          spawnPart("Box", 2, 1, 0, 2, "#ff8844"), setPartColor("Box", "#00ff99"), movePart("Box", 0, 2, 0"),
+          rotatePart("Box", 0, 45, 0), setPartMaterial("Box", "metal"), setAnchored("Box", false), clearWorld()
         </div>
         <pre id="logs">ready</pre>
       </section>
@@ -34,6 +35,6 @@
     </main>
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
-    <script src="./app.js"></script>
+    <script src="./app.js?v=3"></script>
   </body>
 </html>
