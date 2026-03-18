@@ -12,10 +12,8 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 ## Script API
 
 - `print("text")`
-- `joinRoom("main")`
-- `joinRoom("main", "wss://your-server/ws")` (optional WS URL)
+- `joinRoom("obby", 1)` (game + room number)
 - `disconnectRoom()`
-- `setServer("wss://your-server/ws")`
 - `createPlayer("Noob")`
 - `setPlayerColor("#2e86de", "#f2d2a5")`
 - `setSpeed(12)`
@@ -82,12 +80,12 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 
 ## Multiplayer (WebSocket only)
 
-- Use `Room` input + `Connect` button.
-- Fill `server` with your WebSocket relay URL (`ws://...` or `wss://...`).
+- Use `Game` + `Room` inputs (`Room` is numeric: `1, 2, 3...`).
+- `Connect` always uses your current site websocket endpoint (`/ws`).
 - `Run` executes for everyone in the same room.
 - New players receive the current shared world state on join.
-- `New Room` generates a room id and connects.
-- `QR` shows a scannable room link (with `room` + `ws` in URL) for phone join.
+- `New Room` increments room number and connects.
+- `QR` shows a scannable room link (with `game` + `room`) for phone join.
 
 ## Relay Server
 
@@ -95,7 +93,7 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
    - `npm install`
    - `npm start`
 2. Expose it on public URL (VPS/Cloud/Render/Fly/etc).
-3. Put that URL into `server` field and connect the same room on phone + PC.
+3. Put relay behind your site on `/ws` and use same `game` + `room` on phone + PC.
 
 ## Controls
 

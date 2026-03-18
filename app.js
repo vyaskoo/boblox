@@ -28,8 +28,8 @@ const logsEl = document.getElementById("logs");
 const runBtn = document.getElementById("runBtn");
 const fullscreenBtn = document.getElementById("fullscreenBtn");
 const sandboxBtn = document.getElementById("sandboxBtn");
+const gameInputEl = document.getElementById("gameInput");
 const roomInputEl = document.getElementById("roomInput");
-const serverInputEl = document.getElementById("serverInput");
 const connectBtn = document.getElementById("connectBtn");
 const newRoomBtn = document.getElementById("newRoomBtn");
 const qrBtn = document.getElementById("qrBtn");
@@ -57,6 +57,7 @@ const peerState = {
   timer: null,
   syncTimeout: null,
   awaitingWorldSync: false,
+  hadOpen: false,
   remotes: new Map(),
   lastSentAt: 0
 };
@@ -129,12 +130,15 @@ const world = {
 
 editorEl.value = defaults.luau;
 const queryParams = new URLSearchParams(window.location.search);
-const wsQuery = queryParams.get("ws");
 const roomQuery = queryParams.get("room");
+const gameQuery = queryParams.get("game");
+if (gameQuery) {
+  gameInputEl.value = gameQuery;
+}
 if (roomQuery) {
   roomInputEl.value = roomQuery;
 }
-setServerUrl(wsQuery || deriveDefaultWsUrl());
+setServerUrl(deriveDefaultWsUrl());
 
 if (new URLSearchParams(window.location.search).get("sandbox") === "1") {
   document.body.classList.add("focus-mode");
@@ -187,18 +191,16 @@ document.addEventListener("fullscreenchange", () => {
 });
 
 connectBtn.addEventListener("click", () => {
-  const room = (roomInputEl.value || "main").trim().toLowerCase();
-  const wsUrl = (serverInputEl.value || "").trim();
-  connectRoom(room || "main", wsUrl);
+  connectRoom();
 });
 
 newRoomBtn.addEventListener("click", () => {
-  const room = `room-${Math.random().toString(36).slice(2, 8)}`;
-  roomInputEl.value = room;
+  const current = Math.max(1, Number(roomInputEl.value || 1));
+  roomInputEl.value = String(current + 1);
   renderRoomQr();
   qrWrapEl.removeAttribute("hidden");
   qrBtn.textContent = "Hide QR";
-  connectRoom(room, (serverInputEl.value || "").trim());
+  connectRoom();
 });
 
 qrBtn.addEventListener("click", () => {
@@ -213,8 +215,8 @@ qrBtn.addEventListener("click", () => {
   }
 });
 
-if (roomQuery) {
-  setTimeout(() => connectRoom(roomInputEl.value, serverInputEl.value), 0);
+if (roomQuery || gameQuery) {
+  setTimeout(() => connectRoom(), 0);
 }
 
 window.addEventListener("keydown", (event) => world.keys.add(event.code));
@@ -467,13 +469,22 @@ function executeCommand(fn, args, logs) {
     return true;
   }
   if (fn === "joinroom") {
-    connectRoom(String(args[0] ?? "main"), String(args[1] ?? peerState.wsUrl ?? ""));
-    logs.push(`[mp] joined room '${peerState.room}'`);
+    if (args.length > 0) {
+      const maybeGame = String(args[0] ?? "").trim();
+      if (maybeGame) {
+        gameInputEl.value = maybeGame.toLowerCase();
+      }
+    }
+    if (args.length > 1) {
+      const roomNo = Math.max(1, Number(args[1] || 1));
+      roomInputEl.value = String(roomNo);
+    }
+    connectRoom();
+    logs.push(`[mp] joined '${gameInputEl.value}:${roomInputEl.value}'`);
     return true;
   }
   if (fn === "setserver") {
-    setServerUrl(String(args[0] ?? ""));
-    logs.push(`[mp] server=${peerState.wsUrl || "not-set"}`);
+    logs.push("[mp] setServer disabled (uses current site /ws)");
     return true;
   }
   if (fn === "disconnectroom") {
@@ -1604,21 +1615,30 @@ function updateAnimations(dt) {
   }
 }
 
-function connectRoom(roomName, wsUrl = "") {
-  const room = String(roomName || "main").trim().toLowerCase();
-  if (!room) return;
+function getRoomKey() {
+  const game = (gameInputEl.value || "obby").trim().toLowerCase().replace(/\s+/g, "-");
+  const roomNo = Math.max(1, Number(roomInputEl.value || 1));
+  roomInputEl.value = String(roomNo);
+  gameInputEl.value = game || "obby";
+  return `${game || "obby"}:${roomNo}`;
+}
+
+function connectRoom() {
+  const room = getRoomKey();
   disconnectRoom(false);
-  setServerUrl(wsUrl || serverInputEl.value || "");
+  setServerUrl(deriveDefaultWsUrl());
   if (!peerState.wsUrl) {
     setMultiplayerStatus("ws-missing");
     return;
   }
   peerState.room = room;
   peerState.awaitingWorldSync = true;
+  peerState.hadOpen = false;
   peerState.transport = "websocket";
   setMultiplayerStatus(`connecting:${room}:websocket`);
   peerState.socket = new WebSocket(peerState.wsUrl);
   peerState.socket.addEventListener("open", () => {
+    peerState.hadOpen = true;
     sendTransportMessage({ type: "join", room, id: peerState.id });
     onConnectedTransport(room);
     renderRoomQr();
@@ -1631,7 +1651,7 @@ function connectRoom(roomName, wsUrl = "") {
   });
   peerState.socket.addEventListener("close", () => {
     if (peerState.room === room) {
-      setMultiplayerStatus(`offline:${room}:websocket`);
+      setMultiplayerStatus(peerState.hadOpen ? `offline:${room}:websocket` : `no-ws-endpoint:/ws`);
     }
   });
   peerState.socket.addEventListener("error", () => {
@@ -1797,9 +1817,6 @@ function setMultiplayerStatus(text) {
 function setServerUrl(url) {
   const value = String(url || "").trim();
   peerState.wsUrl = value;
-  if (serverInputEl) {
-    serverInputEl.value = value;
-  }
   renderRoomQr();
 }
 
@@ -1810,20 +1827,17 @@ function deriveDefaultWsUrl() {
   if (host === "localhost" || host === "127.0.0.1") {
     return `${protocol}//${host}:8787`;
   }
-  return "";
+  return `${protocol}//${window.location.host}/ws`;
 }
 
 function renderRoomQr() {
   if (!qrCodeEl || !shareUrlEl) return;
-  const room = (roomInputEl.value || "main").trim().toLowerCase() || "main";
-  const ws = (serverInputEl.value || "").trim();
+  const roomNumber = Number(roomInputEl.value || 1);
+  const game = (gameInputEl.value || "obby").trim().toLowerCase();
   const url = new URL(window.location.href);
-  url.searchParams.set("room", room);
-  if (ws) {
-    url.searchParams.set("ws", ws);
-  } else {
-    url.searchParams.delete("ws");
-  }
+  url.searchParams.set("room", String(roomNumber));
+  url.searchParams.set("game", game);
+  url.searchParams.delete("sandbox");
   const share = url.toString();
   shareUrlEl.textContent = share;
   qrCodeEl.innerHTML = "";
@@ -1839,14 +1853,24 @@ function renderRoomQr() {
       },
       (error) => {
         if (error) {
-          qrCodeEl.textContent = "QR error";
+          const img = document.createElement("img");
+          img.width = 110;
+          img.height = 110;
+          img.alt = "Room QR";
+          img.src = `https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(share)}`;
+          qrCodeEl.appendChild(img);
           return;
         }
         qrCodeEl.appendChild(canvasEl);
       }
     );
   } else {
-    qrCodeEl.textContent = "QR lib missing";
+    const img = document.createElement("img");
+    img.width = 110;
+    img.height = 110;
+    img.alt = "Room QR";
+    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(share)}`;
+    qrCodeEl.appendChild(img);
   }
 }
 

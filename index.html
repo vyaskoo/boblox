@@ -25,9 +25,10 @@
         </header>
         <textarea id="editor" spellcheck="false"></textarea>
         <div class="multiplayer">
+          <label for="gameInput">Game</label>
+          <input id="gameInput" value="obby" />
           <label for="roomInput">Room</label>
-          <input id="roomInput" value="main" />
-          <input id="serverInput" placeholder="wss://server.example/ws" />
+          <input id="roomInput" type="number" min="1" step="1" value="1" />
           <button id="connectBtn" type="button">Connect</button>
           <button id="newRoomBtn" type="button">New Room</button>
           <button id="qrBtn" type="button">QR</button>
@@ -66,6 +67,6 @@
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-    <script src="./app.js?v=15"></script>
+    <script src="./app.js?v=16"></script>
   </body>
 </html>
