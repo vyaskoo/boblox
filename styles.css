@@ -46,6 +46,11 @@ body {
   gap: 8px;
 }
 
+.right {
+  display: flex;
+  gap: 8px;
+}
+
 select,
 button {
   color: #dce4ef;
@@ -65,6 +70,30 @@ button {
   padding: 12px;
   font-family: Consolas, "Courier New", monospace;
   font-size: 14px;
+}
+
+.multiplayer {
+  padding: 8px 12px;
+  border-top: 1px solid #2a3547;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #111a2b;
+  font-size: 13px;
+}
+
+.multiplayer input {
+  background: #0e1627;
+  border: 1px solid #3f516d;
+  color: #dce4ef;
+  border-radius: 6px;
+  padding: 5px 8px;
+  width: 100px;
+}
+
+#mpStatus {
+  color: #92d6a4;
+  font-family: Consolas, "Courier New", monospace;
 }
 
 .help {
@@ -98,4 +127,12 @@ button {
   .layout {
     grid-template-columns: 1fr;
   }
+}
+
+body.sandbox-mode .layout {
+  grid-template-columns: 1fr;
+}
+
+body.sandbox-mode .layout > .panel:first-child {
+  display: none;
 }

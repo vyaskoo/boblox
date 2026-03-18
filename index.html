@@ -17,9 +17,19 @@
               <option value="python">Python</option>
             </select>
           </div>
-          <button id="runBtn" type="button">Run</button>
+          <div class="right">
+            <button id="runBtn" type="button">Run</button>
+            <button id="fullscreenBtn" type="button">Fullscreen</button>
+            <button id="sandboxBtn" type="button">Sandbox Window</button>
+          </div>
         </header>
         <textarea id="editor" spellcheck="false"></textarea>
+        <div class="multiplayer">
+          <label for="roomInput">Room</label>
+          <input id="roomInput" value="main" />
+          <button id="connectBtn" type="button">Connect</button>
+          <span id="mpStatus">offline</span>
+        </div>
         <div class="help">
           createPlayer("Noob"), spawnPart("Box", 2, 1, 0, 2, "#ff8844"), spawnBlock("Pad", 0, 0.5, 6, 6, 1, 6,
           "#44aaff"), clonePart("Box", "Box2"), setPartTransparency("Box2", 0.35), spinPart("Box", 0, 45, 0),
@@ -35,6 +45,6 @@
     </main>
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
-    <script src="./app.js?v=4"></script>
+    <script src="./app.js?v=5"></script>
   </body>
 </html>

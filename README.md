@@ -12,6 +12,8 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 ## Script API
 
 - `print("text")`
+- `joinRoom("main")`
+- `disconnectRoom()`
 - `createPlayer("Noob")`
 - `setPlayerColor("#2e86de", "#f2d2a5")`
 - `setSpeed(12)`
@@ -49,6 +51,17 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `focusPart("Box")`
 - `resetCamera()`
 - `clearWorld()`
+
+## Sandbox & Fullscreen
+
+- `Fullscreen` button: opens the 3D viewport in native fullscreen.
+- `Sandbox Window` button: opens a new window (`?sandbox=1`) with only the sandbox view.
+
+## Multiplayer (no backend)
+
+- Use `Room` input + `Connect` button.
+- Other players appear as live avatars in the scene.
+- This uses `BroadcastChannel`, so it works between tabs/windows of the same site origin (browser-local).
 
 ## Controls
 
