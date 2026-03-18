@@ -61,6 +61,7 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 
 - Use `Room` input + `Connect` button.
 - Other players appear as live avatars in the scene.
+- `Run` now broadcasts the script to all players in the same room, so code executes for everyone.
 - This uses `BroadcastChannel`, so it works between tabs/windows of the same site origin (browser-local).
 
 ## Controls

@@ -79,8 +79,13 @@ languageEl.addEventListener("change", () => {
 });
 
 runBtn.addEventListener("click", () => {
-  const result = runScript(languageEl.value, editorEl.value);
+  const language = languageEl.value;
+  const code = editorEl.value;
+  const result = runScript(language, code);
   logsEl.textContent = result.join("\n");
+  if (peerState.channel) {
+    postPeerMessage({ type: "run_script", language, code });
+  }
 });
 
 fullscreenBtn.addEventListener("click", () => {
@@ -817,6 +822,13 @@ function handlePeerMessage(event) {
   }
   if (data.type === "state") {
     upsertRemotePlayer(data.id, data.state);
+    return;
+  }
+  if (data.type === "run_script") {
+    const language = String(data.language || "luau");
+    const code = String(data.code || "");
+    const result = runScript(language, code);
+    logsEl.textContent = [`[mp] script from ${data.id}`, ...result].join("\n");
     return;
   }
   if (data.type === "bye") {
