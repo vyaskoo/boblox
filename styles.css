@@ -67,6 +67,16 @@ button {
   font-size: 14px;
 }
 
+.help {
+  padding: 8px 12px;
+  border-top: 1px solid #2a3547;
+  background: #101a2b;
+  color: #a9bfd8;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 #logs {
   margin: 0;
   padding: 10px 12px;

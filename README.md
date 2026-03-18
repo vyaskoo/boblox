@@ -20,4 +20,17 @@
 ## Команды в скрипте
 
 - `print("text")`
-- `createPart("BlockName")`
+- `createPlayer("Noob")`
+- `createFloor(80, "#4f8f4f")`
+- `setSky("day" | "sunset" | "night" | "#87ceeb")`
+- `setSpeed(10)`
+- `movePlayer(2, 0)`
+- `jump(8)`
+- `teleport(0, 3, 0)`
+- `spawnPart("Box", 2, 1, 0, 2, "#ff8844")`
+- `createPart(...)` (alias для `spawnPart`)
+
+## Управление
+
+- `W A S D` — движение персонажа
+- `Space` — прыжок
