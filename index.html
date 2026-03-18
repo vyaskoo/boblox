@@ -33,8 +33,10 @@
         <div class="help">
           createPlayer("Noob"), spawnPart("Box", 2, 1, 0, 2, "#ff8844"), spawnBlock("Pad", 0, 0.5, 6, 6, 1, 6,
           "#44aaff"), clonePart("Box", "Box2"), setPartTransparency("Box2", 0.35), spinPart("Box", 0, 45, 0),
-          pulsePart("Pad", 2, 0.9, 1.1), setViewMode("first"), setThirdPersonMouseRotate(true), setSprintMultiplier(1.8),
-          setAcceleration(50), setDeceleration(34), listParts(), focusPart("Box"), resetCamera(), clearWorld()
+          pulsePart("Pad", 2, 0.9, 1.1), setViewMode("first"), setMouseSensitivity(1.2),
+          setCameraPitchLimits(-75, 80), setSprintMultiplier(1.8), setAcceleration(50), setDeceleration(34),
+          setCoyoteTime(0.12), setJumpBuffer(0.14), onTouched("Pad", "print:Checkpoint"), listParts(), focusPart("Box"),
+          resetCamera(), clearWorld()
         </div>
         <pre id="logs">ready</pre>
       </section>
@@ -46,6 +48,6 @@
     </main>
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
-    <script src="./app.js?v=9"></script>
+    <script src="./app.js?v=10"></script>
   </body>
 </html>

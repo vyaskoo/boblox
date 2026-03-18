@@ -66,6 +66,11 @@ const world = {
   sprintMultiplier: 1.65,
   acceleration: 42,
   deceleration: 30,
+  coyoteTimeWindow: 0.12,
+  coyoteTimer: 0,
+  jumpBufferWindow: 0.12,
+  jumpBufferTimer: 0,
+  bufferedJumpPower: 0,
   velocityXZ: new BABYLON.Vector2(0, 0),
   standHeight: 1.6,
   headOffset: 0.9,
@@ -74,6 +79,9 @@ const world = {
   viewMode: "third",
   firstPersonRotateWithMouse: true,
   thirdPersonRotateWithMouse: false,
+  mouseSensitivity: 1.0,
+  pitchMinDeg: -80,
+  pitchMaxDeg: 80,
   velocityY: 0,
   grounded: false,
   gravity: -22,
@@ -81,7 +89,11 @@ const world = {
   keys: new Set(),
   spawnIndex: 0,
   parts: new Map(),
-  dynamicParts: new Set()
+  dynamicParts: new Set(),
+  touchHandlers: new Map(),
+  touchActive: new Set(),
+  touchLastFired: new Map(),
+  touchCooldownMs: 120
 };
 
 editorEl.value = defaults.luau;
@@ -150,6 +162,7 @@ function setupScene() {
   world.camera.attachControl(canvas, true);
   world.camera.lowerRadiusLimit = 8;
   world.camera.upperRadiusLimit = 90;
+  applyCameraSettings();
 
   world.light = new BABYLON.HemisphericLight("sun", new BABYLON.Vector3(0, 1, 0), world.scene);
   world.light.intensity = 0.95;
@@ -272,6 +285,16 @@ function executeCommand(fn, args, logs) {
     logs.push(`[camera] thirdPersonMouseRotate=${world.thirdPersonRotateWithMouse}`);
     return true;
   }
+  if (fn === "setmousesensitivity") {
+    setMouseSensitivity(Number(args[0] ?? 1));
+    logs.push(`[camera] mouseSensitivity=${world.mouseSensitivity.toFixed(2)}`);
+    return true;
+  }
+  if (fn === "setcamerapitchlimits") {
+    setCameraPitchLimits(Number(args[0] ?? -80), Number(args[1] ?? 80));
+    logs.push(`[camera] pitch=[${world.pitchMinDeg}, ${world.pitchMaxDeg}]`);
+    return true;
+  }
   if (fn === "toggleview") {
     toggleViewMode();
     logs.push(`[camera] view=${world.viewMode}`);
@@ -337,6 +360,16 @@ function executeCommand(fn, args, logs) {
   if (fn === "setdeceleration") {
     setDeceleration(Number(args[0] ?? 30));
     logs.push(`[player] deceleration=${world.deceleration.toFixed(1)}`);
+    return true;
+  }
+  if (fn === "setcoyotetime") {
+    setCoyoteTime(Number(args[0] ?? 0.12));
+    logs.push(`[player] coyoteTime=${world.coyoteTimeWindow.toFixed(2)}`);
+    return true;
+  }
+  if (fn === "setjumpbuffer") {
+    setJumpBuffer(Number(args[0] ?? 0.12));
+    logs.push(`[player] jumpBuffer=${world.jumpBufferWindow.toFixed(2)}`);
     return true;
   }
   if (fn === "clearworld") {
@@ -431,6 +464,16 @@ function executeCommand(fn, args, logs) {
   if (fn === "setanchored") {
     setAnchored(String(args[0] ?? ""), args[1] ?? true);
     logs.push("[part] setAnchored");
+    return true;
+  }
+  if (fn === "ontouched") {
+    onTouched(String(args[0] ?? ""), String(args[1] ?? ""));
+    logs.push("[part] onTouched");
+    return true;
+  }
+  if (fn === "cleartouched") {
+    clearTouched(String(args[0] ?? ""));
+    logs.push("[part] clearTouched");
     return true;
   }
   if (fn === "spinpart") {
@@ -543,6 +586,12 @@ function setAcceleration(value) {
 function setDeceleration(value) {
   if (Number.isFinite(value)) world.deceleration = Math.max(1, Math.min(120, value));
 }
+function setCoyoteTime(value) {
+  if (Number.isFinite(value)) world.coyoteTimeWindow = Math.max(0, Math.min(0.5, value));
+}
+function setJumpBuffer(value) {
+  if (Number.isFinite(value)) world.jumpBufferWindow = Math.max(0, Math.min(0.5, value));
+}
 function setJumpPower(power) {
   if (Number.isFinite(power)) world.jumpPower = Math.max(2, Math.min(40, power));
 }
@@ -567,10 +616,20 @@ function lookAt(x, y, z) {
   world.playerRoot.rotation.y = Math.atan2(dir.x, dir.z);
   broadcastNow();
 }
-function jump(power) {
-  if (!world.playerRoot || !world.grounded) return;
+function performJump(power) {
   world.velocityY = Math.max(2, Math.min(40, power));
   world.grounded = false;
+  world.coyoteTimer = 0;
+  world.jumpBufferTimer = 0;
+}
+function jump(power) {
+  if (!world.playerRoot) return;
+  if (world.grounded || world.coyoteTimer > 0) {
+    performJump(power);
+    return;
+  }
+  world.jumpBufferTimer = world.jumpBufferWindow;
+  world.bufferedJumpPower = Math.max(world.jumpPower, power);
 }
 
 function setCameraMode(mode) {
@@ -598,12 +657,45 @@ function setThirdPersonMouseRotate(enabled) {
   world.thirdPersonRotateWithMouse = enabled === true;
 }
 
+function setMouseSensitivity(value) {
+  if (!Number.isFinite(value)) return;
+  world.mouseSensitivity = Math.max(0.1, Math.min(5, value));
+  applyCameraSettings();
+}
+
+function setCameraPitchLimits(minDeg, maxDeg) {
+  if (!Number.isFinite(minDeg) || !Number.isFinite(maxDeg)) return;
+  let min = Math.max(-89, Math.min(89, minDeg));
+  let max = Math.max(-89, Math.min(89, maxDeg));
+  if (min > max) {
+    const t = min;
+    min = max;
+    max = t;
+  }
+  world.pitchMinDeg = min;
+  world.pitchMaxDeg = max;
+  applyCameraSettings();
+}
+
+function applyCameraSettings() {
+  if (!world.camera) return;
+  world.camera.lowerBetaLimit = BABYLON.Tools.ToRadians(90 - world.pitchMaxDeg);
+  world.camera.upperBetaLimit = BABYLON.Tools.ToRadians(90 - world.pitchMinDeg);
+  const pointers = world.camera.inputs?.attached?.pointers;
+  if (pointers) {
+    const sensitivity = 1000 / world.mouseSensitivity;
+    pointers.angularSensibilityX = sensitivity;
+    pointers.angularSensibilityY = sensitivity;
+  }
+}
+
 function toggleViewMode() {
   setViewMode(world.viewMode === "third" ? "first" : "third");
 }
 
 function applyViewMode() {
   if (!world.camera || !world.playerRoot) return;
+  applyCameraSettings();
   if (world.viewMode === "first") {
     world.camera.lockedTarget = world.playerHead || world.playerRoot;
     world.camera.radius = 0.15;
@@ -664,6 +756,9 @@ function clearWorld() {
   for (const mesh of world.parts.values()) mesh.dispose();
   world.parts.clear();
   world.dynamicParts.clear();
+  world.touchHandlers.clear();
+  world.touchActive.clear();
+  world.touchLastFired.clear();
   world.spawnIndex = 0;
 }
 
@@ -728,6 +823,9 @@ function destroyPart(name) {
   const mesh = getPart(name);
   if (!mesh) return;
   world.dynamicParts.delete(mesh);
+  world.touchHandlers.delete(mesh.name);
+  world.touchActive.delete(mesh.name);
+  world.touchLastFired.delete(mesh.name);
   world.parts.delete(mesh.name);
   mesh.dispose();
 }
@@ -848,8 +946,97 @@ function stopPulse(name) {
   mesh.metadata.pulse = null;
 }
 
+function onTouched(name, action) {
+  const partName = String(name || "").trim();
+  if (!partName) return;
+  const text = String(action || "").trim();
+  if (!text) return;
+  world.touchHandlers.set(partName, text);
+}
+
+function clearTouched(name) {
+  const partName = String(name || "").trim();
+  if (!partName) return;
+  world.touchHandlers.delete(partName);
+}
+
+function processTouchedEvents() {
+  if (!world.playerRoot) return;
+  const x = world.playerRoot.position.x;
+  const y = world.playerRoot.position.y;
+  const z = world.playerRoot.position.z;
+  const feet = y - world.standHeight;
+  const head = y + world.headOffset;
+  const nextActive = new Set();
+  const now = Date.now();
+
+  for (const [partName, action] of world.touchHandlers.entries()) {
+    const mesh = getPart(partName);
+    if (!mesh || mesh.isDisposed()) continue;
+    const halfX = mesh.scaling.x * 0.5;
+    const halfY = mesh.scaling.y * 0.5;
+    const halfZ = mesh.scaling.z * 0.5;
+    const minX = mesh.position.x - halfX;
+    const maxX = mesh.position.x + halfX;
+    const minY = mesh.position.y - halfY;
+    const maxY = mesh.position.y + halfY;
+    const minZ = mesh.position.z - halfZ;
+    const maxZ = mesh.position.z + halfZ;
+    const overlapX = x + world.collisionRadius > minX && x - world.collisionRadius < maxX;
+    const overlapY = head > minY && feet < maxY;
+    const overlapZ = z + world.collisionRadius > minZ && z - world.collisionRadius < maxZ;
+    if (!(overlapX && overlapY && overlapZ)) continue;
+
+    nextActive.add(partName);
+    const cooldownOk = now - (world.touchLastFired.get(partName) || 0) > world.touchCooldownMs;
+    if (!world.touchActive.has(partName) || cooldownOk) {
+      world.touchLastFired.set(partName, now);
+      fireTouchedAction(partName, action);
+    }
+  }
+
+  world.touchActive = nextActive;
+}
+
+function fireTouchedAction(partName, action) {
+  const text = String(action || "");
+  if (!text) return;
+  const lower = text.toLowerCase();
+  if (lower.startsWith("print:")) {
+    const message = text.slice(6).trim();
+    appendLog(`[touch:${partName}] ${message}`);
+    return;
+  }
+  if (lower.startsWith("jump:")) {
+    const power = Number(text.slice(5).trim());
+    jump(Number.isFinite(power) ? power : world.jumpPower);
+    appendLog(`[touch:${partName}] jump`);
+    return;
+  }
+  if (lower.startsWith("teleport:")) {
+    const values = text
+      .slice(9)
+      .split(",")
+      .map((v) => Number(v.trim()));
+    if (values.length >= 3 && values.every((v) => Number.isFinite(v))) {
+      teleport(values[0], values[1], values[2]);
+      appendLog(`[touch:${partName}] teleport`);
+      return;
+    }
+  }
+  appendLog(`[touch:${partName}] ${text}`);
+}
+
+function appendLog(line) {
+  const current = logsEl.textContent ? logsEl.textContent.split("\n") : [];
+  current.push(line);
+  logsEl.textContent = current.slice(-120).join("\n");
+}
+
 function updatePlayer(dt) {
   if (!world.playerRoot) return;
+  world.coyoteTimer = Math.max(0, world.coyoteTimer - dt);
+  world.jumpBufferTimer = Math.max(0, world.jumpBufferTimer - dt);
   const inputX = (world.keys.has("KeyD") ? 1 : 0) - (world.keys.has("KeyA") ? 1 : 0);
   const inputZ = (world.keys.has("KeyW") ? 1 : 0) - (world.keys.has("KeyS") ? 1 : 0);
   const sprinting = world.keys.has("ShiftLeft") || world.keys.has("ShiftRight");
@@ -901,6 +1088,7 @@ function updatePlayer(dt) {
   }
 
   world.velocityY += world.gravity * dt;
+  const wasGrounded = world.grounded;
   let nextY = world.playerRoot.position.y + world.velocityY * dt;
   const groundY = computeGroundY(world.playerRoot.position.x, world.playerRoot.position.z, world.playerRoot.position.y, nextY);
   if (nextY <= groundY) {
@@ -911,6 +1099,17 @@ function updatePlayer(dt) {
     world.grounded = false;
   }
   world.playerRoot.position.y = nextY;
+
+  if (world.grounded) {
+    world.coyoteTimer = world.coyoteTimeWindow;
+    if (world.jumpBufferTimer > 0) {
+      performJump(world.bufferedJumpPower || world.jumpPower);
+    }
+  } else if (wasGrounded) {
+    world.coyoteTimer = world.coyoteTimeWindow;
+  }
+
+  processTouchedEvents();
 }
 
 function moveTowards(current, target, maxDelta) {
@@ -1191,6 +1390,17 @@ function buildWorldSnapshot() {
     lightColor: world.lightColor,
     ambientColor: world.ambientColor,
     gravity: world.gravity,
+    sprintMultiplier: world.sprintMultiplier,
+    acceleration: world.acceleration,
+    deceleration: world.deceleration,
+    coyoteTimeWindow: world.coyoteTimeWindow,
+    jumpBufferWindow: world.jumpBufferWindow,
+    mouseSensitivity: world.mouseSensitivity,
+    pitchMinDeg: world.pitchMinDeg,
+    pitchMaxDeg: world.pitchMaxDeg,
+    firstPersonRotateWithMouse: world.firstPersonRotateWithMouse,
+    thirdPersonRotateWithMouse: world.thirdPersonRotateWithMouse,
+    touchHandlers: Object.fromEntries(world.touchHandlers.entries()),
     parts
   };
 }
@@ -1204,6 +1414,20 @@ function applyWorldSnapshot(snapshot) {
   setLightColor(String(snapshot.lightColor ?? "#ffffff"));
   setAmbientLight(String(snapshot.ambientColor ?? "#000000"));
   setGravity(Number(snapshot.gravity ?? -22));
+  setSprintMultiplier(Number(snapshot.sprintMultiplier ?? world.sprintMultiplier));
+  setAcceleration(Number(snapshot.acceleration ?? world.acceleration));
+  setDeceleration(Number(snapshot.deceleration ?? world.deceleration));
+  setCoyoteTime(Number(snapshot.coyoteTimeWindow ?? world.coyoteTimeWindow));
+  setJumpBuffer(Number(snapshot.jumpBufferWindow ?? world.jumpBufferWindow));
+  setMouseSensitivity(Number(snapshot.mouseSensitivity ?? world.mouseSensitivity));
+  setCameraPitchLimits(Number(snapshot.pitchMinDeg ?? world.pitchMinDeg), Number(snapshot.pitchMaxDeg ?? world.pitchMaxDeg));
+  setFirstPersonMouseRotate(snapshot.firstPersonRotateWithMouse !== false);
+  setThirdPersonMouseRotate(snapshot.thirdPersonRotateWithMouse === true);
+
+  const handlers = snapshot.touchHandlers && typeof snapshot.touchHandlers === "object" ? snapshot.touchHandlers : {};
+  for (const [partName, action] of Object.entries(handlers)) {
+    onTouched(partName, String(action));
+  }
 
   const parts = Array.isArray(snapshot.parts) ? snapshot.parts : [];
   for (const part of parts) {

@@ -27,6 +27,8 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `toggleView()`
 - `setFirstPersonMouseRotate(true | false)` (default `true`)
 - `setThirdPersonMouseRotate(true | false)` (default `false`)
+- `setMouseSensitivity(1.0)`
+- `setCameraPitchLimits(-80, 80)`
 - `createFloor(80, "#4f8f4f")`
 - `createBaseplate(80, "#4f8f4f")`
 - `setSky("day" | "sunset" | "night" | "#87ceeb")`
@@ -36,6 +38,8 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `setSprintMultiplier(1.65)`
 - `setAcceleration(42)`
 - `setDeceleration(30)`
+- `setCoyoteTime(0.12)`
+- `setJumpBuffer(0.12)`
 - `spawnPart("Box", 2, 1, 0, 2, "#ff8844")`
 - `createPart(...)` (alias of `spawnPart`)
 - `spawnBlock("Pad", x, y, z, sx, sy, sz, "#44aaff")`
@@ -52,6 +56,10 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `setPartTransparency("Box", 0.35)` (`0` solid, `1` invisible)
 - `setPartEmissive("Box", "#00ff99", 0.5)`
 - `setAnchored("Box", false)`
+- `onTouched("Pad", "print:Checkpoint")`
+- `onTouched("Pad", "jump:12")`
+- `onTouched("Portal", "teleport:0,3,0")`
+- `clearTouched("Pad")`
 - `spinPart("Box", 0, 45, 0)` and `stopSpin("Box")`
 - `pulsePart("Box", 2.0, 0.9, 1.1)` and `stopPulse("Box")`
 - `listParts()`
@@ -78,3 +86,9 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `Shift` sprint
 - `Space` jump
 - `V` toggle first/third person
+
+## Movement Notes
+
+- By default: first-person rotates with mouse, third-person does not.
+- Player now has acceleration/deceleration, coyote time, and jump buffering.
+- Player collides with spawned parts and can stand on top of them.
