@@ -21,9 +21,9 @@
         </header>
         <textarea id="editor" spellcheck="false"></textarea>
         <div class="help">
-          createPlayer("Noob"), setPlayerColor("#2e86de", "#f2d2a5"), createFloor(80, "#4f8f4f"), setSky("day"),
-          spawnPart("Box", 2, 1, 0, 2, "#ff8844"), setPartColor("Box", "#00ff99"), movePart("Box", 0, 2, 0"),
-          rotatePart("Box", 0, 45, 0), setPartMaterial("Box", "metal"), setAnchored("Box", false), clearWorld()
+          createPlayer("Noob"), spawnPart("Box", 2, 1, 0, 2, "#ff8844"), spawnBlock("Pad", 0, 0.5, 6, 6, 1, 6,
+          "#44aaff"), clonePart("Box", "Box2"), setPartTransparency("Box2", 0.35), spinPart("Box", 0, 45, 0),
+          pulsePart("Pad", 2, 0.9, 1.1), listParts(), focusPart("Box"), resetCamera(), clearWorld()
         </div>
         <pre id="logs">ready</pre>
       </section>
@@ -35,6 +35,6 @@
     </main>
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
-    <script src="./app.js?v=3"></script>
+    <script src="./app.js?v=4"></script>
   </body>
 </html>

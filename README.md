@@ -29,6 +29,9 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `setGravity(-24)`
 - `spawnPart("Box", 2, 1, 0, 2, "#ff8844")`
 - `createPart(...)` (alias of `spawnPart`)
+- `spawnBlock("Pad", x, y, z, sx, sy, sz, "#44aaff")`
+- `clonePart("Box", "Box2")`
+- `renamePart("Box2", "Crate")`
 - `destroyPart("Box")`
 - `deletePart("Box")` (alias)
 - `setPartColor("Box", "#00ff99")`
@@ -37,7 +40,14 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `movePart("Box", 0, 1, 0)`
 - `rotatePart("Box", 0, 45, 0)`
 - `setPartMaterial("Box", "metal" | "plastic" | "neon" | "standard")`
+- `setPartTransparency("Box", 0.35)` (`0` solid, `1` invisible)
+- `setPartEmissive("Box", "#00ff99", 0.5)`
 - `setAnchored("Box", false)`
+- `spinPart("Box", 0, 45, 0)` and `stopSpin("Box")`
+- `pulsePart("Box", 2.0, 0.9, 1.1)` and `stopPulse("Box")`
+- `listParts()`
+- `focusPart("Box")`
+- `resetCamera()`
 - `clearWorld()`
 
 ## Controls

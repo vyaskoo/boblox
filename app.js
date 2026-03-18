@@ -7,7 +7,8 @@ const defaults = {
     "setSpeed(11)",
     "setJumpPower(10)",
     'spawnPart("Tower", 6, 2, 0, 3, "#ff8844")',
-    'setPartMaterial("Tower", "metal")'
+    'setPartMaterial("Tower", "metal")',
+    'spinPart("Tower", 0, 45, 0)'
   ].join("\n"),
   python: [
     'print("Boblox boot")',
@@ -16,7 +17,8 @@ const defaults = {
     'createPlayer("Coder")',
     "setSpeed(11)",
     "setGravity(-24)",
-    'spawnPart("Pad", 0, 0.6, 6, 2, "#44aaff")'
+    'spawnBlock("Pad", 0, 0.5, 6, 6, 1, 6, "#44aaff")',
+    'pulsePart("Pad", 2.0, 0.9, 1.1)'
   ].join("\n")
 };
 
@@ -89,6 +91,7 @@ function setupScene() {
     const dt = world.engine.getDeltaTime() / 1000;
     updatePlayer(dt);
     updateDynamicParts(dt);
+    updateAnimations(dt);
     world.scene.render();
   });
 
@@ -110,12 +113,8 @@ function runScript(language, code) {
   for (const line of lines) {
     const parsed = parseCall(line);
     if (!parsed) continue;
-    const { fn, args } = parsed;
-
-    const ok = executeCommand(fn, args, logs);
-    if (ok) {
-      recognized += 1;
-    }
+    const ok = executeCommand(parsed.fn, parsed.args, logs);
+    if (ok) recognized += 1;
   }
 
   if (recognized === 0) {
@@ -185,6 +184,25 @@ function executeCommand(fn, args, logs) {
     return true;
   }
 
+  if (fn === "focuspart") {
+    const mesh = getPart(String(args[0] ?? ""));
+    if (mesh) {
+      world.camera.lockedTarget = mesh;
+      world.cameraMode = "part";
+      logs.push(`[camera] focusPart '${mesh.name}'`);
+      return true;
+    }
+    logs.push("[camera] part not found");
+    return true;
+  }
+
+  if (fn === "resetcamera") {
+    world.camera.lockedTarget = world.playerRoot;
+    world.cameraMode = "follow";
+    logs.push("[camera] resetCamera");
+    return true;
+  }
+
   if (fn === "createfloor" || fn === "createbaseplate") {
     createFloor(Number(args[0] ?? 60), String(args[1] ?? "#4f8f4f"));
     logs.push("[world] createFloor");
@@ -200,6 +218,12 @@ function executeCommand(fn, args, logs) {
   if (fn === "setsunintensity") {
     setSunIntensity(Number(args[0] ?? 1));
     logs.push(`[world] sunIntensity=${world.light.intensity.toFixed(2)}`);
+    return true;
+  }
+
+  if (fn === "setlightcolor") {
+    setLightColor(String(args[0] ?? "#ffffff"));
+    logs.push("[world] setLightColor");
     return true;
   }
 
@@ -221,6 +245,12 @@ function executeCommand(fn, args, logs) {
     return true;
   }
 
+  if (fn === "listparts") {
+    const names = [...world.parts.keys()];
+    logs.push(names.length ? `[world] parts: ${names.join(", ")}` : "[world] no parts");
+    return true;
+  }
+
   if (fn === "spawnpart" || fn === "createpart") {
     const name = String(args[0] ?? `Part${world.spawnIndex + 1}`);
     const x = Number(args[1] ?? (world.spawnIndex % 8) - 4);
@@ -233,10 +263,35 @@ function executeCommand(fn, args, logs) {
     return true;
   }
 
+  if (fn === "spawnblock") {
+    const name = String(args[0] ?? `Block${world.spawnIndex + 1}`);
+    const x = Number(args[1] ?? 0);
+    const y = Number(args[2] ?? 1);
+    const z = Number(args[3] ?? 0);
+    const sx = Number(args[4] ?? 2);
+    const sy = Number(args[5] ?? 2);
+    const sz = Number(args[6] ?? 2);
+    const color = String(args[7] ?? "#a4c2ff");
+    spawnBlock(name, x, y, z, sx, sy, sz, color);
+    logs.push(`[world] spawnBlock '${name}'`);
+    return true;
+  }
+
+  if (fn === "clonepart") {
+    clonePart(String(args[0] ?? ""), String(args[1] ?? ""));
+    logs.push("[part] clonePart");
+    return true;
+  }
+
+  if (fn === "renamepart") {
+    renamePart(String(args[0] ?? ""), String(args[1] ?? ""));
+    logs.push("[part] renamePart");
+    return true;
+  }
+
   if (fn === "destroypart" || fn === "deletepart") {
-    const name = String(args[0] ?? "");
-    destroyPart(name);
-    logs.push(`[world] destroyPart '${name}'`);
+    destroyPart(String(args[0] ?? ""));
+    logs.push("[part] destroyPart");
     return true;
   }
 
@@ -276,9 +331,45 @@ function executeCommand(fn, args, logs) {
     return true;
   }
 
+  if (fn === "setparttransparency") {
+    setPartTransparency(String(args[0] ?? ""), Number(args[1] ?? 0));
+    logs.push("[part] setPartTransparency");
+    return true;
+  }
+
+  if (fn === "setpartemissive") {
+    setPartEmissive(String(args[0] ?? ""), String(args[1] ?? "#ffffff"), Number(args[2] ?? 0.4));
+    logs.push("[part] setPartEmissive");
+    return true;
+  }
+
   if (fn === "setanchored") {
     setAnchored(String(args[0] ?? ""), args[1] ?? true);
     logs.push("[part] setAnchored");
+    return true;
+  }
+
+  if (fn === "spinpart") {
+    spinPart(String(args[0] ?? ""), Number(args[1] ?? 0), Number(args[2] ?? 45), Number(args[3] ?? 0));
+    logs.push("[part] spinPart");
+    return true;
+  }
+
+  if (fn === "stopspin") {
+    stopSpin(String(args[0] ?? ""));
+    logs.push("[part] stopSpin");
+    return true;
+  }
+
+  if (fn === "pulsepart") {
+    pulsePart(String(args[0] ?? ""), Number(args[1] ?? 2), Number(args[2] ?? 0.9), Number(args[3] ?? 1.1));
+    logs.push("[part] pulsePart");
+    return true;
+  }
+
+  if (fn === "stoppulse") {
+    stopPulse(String(args[0] ?? ""));
+    logs.push("[part] stopPulse");
     return true;
   }
 
@@ -288,10 +379,7 @@ function executeCommand(fn, args, logs) {
 function parseCall(line) {
   const match = line.match(/^([a-zA-Z_]\w*)\((.*)\)$/);
   if (!match) return null;
-  return {
-    fn: match[1].toLowerCase(),
-    args: splitArgs(match[2]).map(parseArg)
-  };
+  return { fn: match[1].toLowerCase(), args: splitArgs(match[2]).map(parseArg) };
 }
 
 function splitArgs(raw) {
@@ -331,14 +419,12 @@ function parseArg(token) {
   }
   if (token.toLowerCase() === "true") return true;
   if (token.toLowerCase() === "false") return false;
-  const num = Number(token);
-  return Number.isNaN(num) ? token : num;
+  const n = Number(token);
+  return Number.isNaN(n) ? token : n;
 }
 
 function createPlayer(name) {
-  if (world.playerRoot) {
-    world.playerRoot.dispose();
-  }
+  if (world.playerRoot) world.playerRoot.dispose();
 
   world.playerLabel = String(name || "Player");
   world.playerRoot = new BABYLON.TransformNode("playerRoot", world.scene);
@@ -358,31 +444,24 @@ function createPlayer(name) {
 
 function setPlayerColor(bodyColor, headColor) {
   if (!world.playerBody || !world.playerHead) return;
-  const bodyMat = new BABYLON.StandardMaterial("bodyMat", world.scene);
-  bodyMat.diffuseColor = parseColor(bodyColor, new BABYLON.Color3(0.18, 0.52, 0.87));
-  world.playerBody.material = bodyMat;
-
-  const headMat = new BABYLON.StandardMaterial("headMat", world.scene);
-  headMat.diffuseColor = parseColor(headColor, new BABYLON.Color3(0.95, 0.82, 0.64));
-  world.playerHead.material = headMat;
+  const body = new BABYLON.StandardMaterial("bodyMat", world.scene);
+  body.diffuseColor = parseColor(bodyColor, new BABYLON.Color3(0.18, 0.52, 0.87));
+  world.playerBody.material = body;
+  const head = new BABYLON.StandardMaterial("headMat", world.scene);
+  head.diffuseColor = parseColor(headColor, new BABYLON.Color3(0.95, 0.82, 0.64));
+  world.playerHead.material = head;
 }
 
 function setSpeed(speed) {
-  if (Number.isFinite(speed)) {
-    world.speed = Math.max(1, Math.min(45, speed));
-  }
+  if (Number.isFinite(speed)) world.speed = Math.max(1, Math.min(45, speed));
 }
 
 function setJumpPower(power) {
-  if (Number.isFinite(power)) {
-    world.jumpPower = Math.max(2, Math.min(40, power));
-  }
+  if (Number.isFinite(power)) world.jumpPower = Math.max(2, Math.min(40, power));
 }
 
 function setGravity(value) {
-  if (Number.isFinite(value)) {
-    world.gravity = Math.max(-80, Math.min(-1, value));
-  }
+  if (Number.isFinite(value)) world.gravity = Math.max(-80, Math.min(-1, value));
 }
 
 function movePlayer(dx, dz) {
@@ -425,9 +504,9 @@ function createFloor(size, color) {
   if (world.floor) world.floor.dispose();
   world.floor = BABYLON.MeshBuilder.CreateGround("floor", { width: floorSize, height: floorSize }, world.scene);
   world.floor.position.y = 0;
-  const floorMat = new BABYLON.StandardMaterial("floorMat", world.scene);
-  floorMat.diffuseColor = parseColor(color, new BABYLON.Color3(0.31, 0.56, 0.31));
-  world.floor.material = floorMat;
+  const mat = new BABYLON.StandardMaterial("floorMat", world.scene);
+  mat.diffuseColor = parseColor(color, new BABYLON.Color3(0.31, 0.56, 0.31));
+  world.floor.material = mat;
 }
 
 function setSky(mode) {
@@ -449,9 +528,11 @@ function setSky(mode) {
 }
 
 function setSunIntensity(value) {
-  if (Number.isFinite(value)) {
-    world.light.intensity = Math.max(0, Math.min(4, value));
-  }
+  if (Number.isFinite(value)) world.light.intensity = Math.max(0, Math.min(4, value));
+}
+
+function setLightColor(color) {
+  world.light.diffuse = parseColor(color, new BABYLON.Color3(1, 1, 1));
 }
 
 function setAmbientLight(color) {
@@ -468,16 +549,53 @@ function clearWorld() {
 }
 
 function spawnPart(name, x, y, z, size, color) {
+  spawnBlock(name, x, y, z, size, size, size, color);
+}
+
+function spawnBlock(name, x, y, z, sx, sy, sz, color) {
   const partName = uniqueName(String(name || "Part"));
   const mesh = BABYLON.MeshBuilder.CreateBox(partName, { size: 1 }, world.scene);
-  mesh.scaling.setAll(Math.max(0.2, size));
+  mesh.scaling.set(Math.max(0.2, sx), Math.max(0.2, sy), Math.max(0.2, sz));
   mesh.position.set(x, y, z);
-  mesh.metadata = { anchored: true, velocityY: 0 };
+  mesh.metadata = {
+    anchored: true,
+    velocityY: 0,
+    spinDegPerSec: new BABYLON.Vector3(0, 0, 0),
+    pulse: null
+  };
   const mat = new BABYLON.StandardMaterial(`${partName}-mat`, world.scene);
   mat.diffuseColor = parseColor(color, new BABYLON.Color3(0.64, 0.76, 1));
   mesh.material = mat;
   world.parts.set(partName, mesh);
   world.spawnIndex += 1;
+}
+
+function clonePart(sourceName, newName) {
+  const src = getPart(sourceName);
+  if (!src) return;
+  const cloneName = uniqueName(newName || `${sourceName}_copy`);
+  const box = BABYLON.MeshBuilder.CreateBox(cloneName, { size: 1 }, world.scene);
+  box.position = src.position.add(new BABYLON.Vector3(1.5, 0, 0));
+  box.rotation = src.rotation.clone();
+  box.scaling = src.scaling.clone();
+  box.metadata = JSON.parse(JSON.stringify(src.metadata || {}));
+  if (!box.metadata.spinDegPerSec) box.metadata.spinDegPerSec = new BABYLON.Vector3(0, 0, 0);
+  const mat = new BABYLON.StandardMaterial(`${cloneName}-mat`, world.scene);
+  const srcMat = ensureStandardMaterial(src);
+  mat.diffuseColor = srcMat.diffuseColor.clone();
+  mat.emissiveColor = srcMat.emissiveColor.clone();
+  mat.alpha = srcMat.alpha;
+  box.material = mat;
+  world.parts.set(cloneName, box);
+}
+
+function renamePart(oldName, newName) {
+  const mesh = getPart(oldName);
+  const target = String(newName || "").trim();
+  if (!mesh || !target || world.parts.has(target)) return;
+  world.parts.delete(mesh.name);
+  mesh.name = target;
+  world.parts.set(target, mesh);
 }
 
 function destroyPart(name) {
@@ -492,6 +610,21 @@ function setPartColor(name, color) {
   const mesh = getPart(name);
   if (!mesh) return;
   ensureStandardMaterial(mesh).diffuseColor = parseColor(color, new BABYLON.Color3(1, 1, 1));
+}
+
+function setPartTransparency(name, alpha01) {
+  const mesh = getPart(name);
+  if (!mesh) return;
+  const mat = ensureStandardMaterial(mesh);
+  const alpha = Math.max(0, Math.min(1, Number(alpha01)));
+  mat.alpha = 1 - alpha;
+}
+
+function setPartEmissive(name, color, intensity) {
+  const mesh = getPart(name);
+  if (!mesh) return;
+  const mat = ensureStandardMaterial(mesh);
+  mat.emissiveColor = parseColor(color, new BABYLON.Color3(1, 1, 1)).scale(Math.max(0, Math.min(3, intensity)));
 }
 
 function setPartSize(name, size) {
@@ -558,9 +691,41 @@ function setAnchored(name, anchored) {
   }
 }
 
+function spinPart(name, degX, degY, degZ) {
+  const mesh = getPart(name);
+  if (!mesh) return;
+  mesh.metadata = mesh.metadata || {};
+  mesh.metadata.spinDegPerSec = new BABYLON.Vector3(degX, degY, degZ);
+}
+
+function stopSpin(name) {
+  const mesh = getPart(name);
+  if (!mesh || !mesh.metadata) return;
+  mesh.metadata.spinDegPerSec = new BABYLON.Vector3(0, 0, 0);
+}
+
+function pulsePart(name, speed, minScale, maxScale) {
+  const mesh = getPart(name);
+  if (!mesh) return;
+  mesh.metadata = mesh.metadata || {};
+  mesh.metadata.pulse = {
+    speed: Math.max(0.1, speed),
+    min: Math.max(0.2, Math.min(minScale, maxScale)),
+    max: Math.max(minScale, maxScale),
+    base: mesh.scaling.clone(),
+    t: 0
+  };
+}
+
+function stopPulse(name) {
+  const mesh = getPart(name);
+  if (!mesh || !mesh.metadata || !mesh.metadata.pulse) return;
+  mesh.scaling.copyFrom(mesh.metadata.pulse.base);
+  mesh.metadata.pulse = null;
+}
+
 function updatePlayer(dt) {
   if (!world.playerRoot) return;
-
   const dir = new BABYLON.Vector3(0, 0, 0);
   if (world.keys.has("KeyW")) dir.z += 1;
   if (world.keys.has("KeyS")) dir.z -= 1;
@@ -598,6 +763,25 @@ function updateDynamicParts(dt) {
   }
 }
 
+function updateAnimations(dt) {
+  for (const mesh of world.parts.values()) {
+    if (!mesh || mesh.isDisposed() || !mesh.metadata) continue;
+
+    if (mesh.metadata.spinDegPerSec) {
+      mesh.rotation.x += BABYLON.Tools.ToRadians(mesh.metadata.spinDegPerSec.x * dt);
+      mesh.rotation.y += BABYLON.Tools.ToRadians(mesh.metadata.spinDegPerSec.y * dt);
+      mesh.rotation.z += BABYLON.Tools.ToRadians(mesh.metadata.spinDegPerSec.z * dt);
+    }
+
+    if (mesh.metadata.pulse) {
+      const p = mesh.metadata.pulse;
+      p.t += dt * p.speed;
+      const k = p.min + (p.max - p.min) * (0.5 + 0.5 * Math.sin(p.t * Math.PI * 2));
+      mesh.scaling.set(p.base.x * k, p.base.y * k, p.base.z * k);
+    }
+  }
+}
+
 function getPart(name) {
   return world.parts.get(String(name || ""));
 }
@@ -613,9 +797,7 @@ function uniqueName(baseName) {
 }
 
 function ensureStandardMaterial(mesh) {
-  if (mesh.material instanceof BABYLON.StandardMaterial) {
-    return mesh.material;
-  }
+  if (mesh.material instanceof BABYLON.StandardMaterial) return mesh.material;
   const mat = new BABYLON.StandardMaterial(`${mesh.name}-mat`, world.scene);
   mat.diffuseColor = new BABYLON.Color3(0.64, 0.76, 1);
   mesh.material = mat;
