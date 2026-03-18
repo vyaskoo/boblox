@@ -91,6 +91,10 @@ button {
   width: 100px;
 }
 
+#serverInput {
+  width: 260px;
+}
+
 #mpStatus {
   color: #92d6a4;
   font-family: Consolas, "Courier New", monospace;
@@ -129,10 +133,37 @@ button {
   }
 }
 
-body.sandbox-mode .layout {
+body.sandbox-mode .layout,
+body.focus-mode .layout {
   grid-template-columns: 1fr;
 }
 
-body.sandbox-mode .layout > .panel:first-child {
+body.sandbox-mode .layout > .panel:first-child,
+body.focus-mode .layout > .panel:first-child {
   display: none;
+}
+
+body.focus-mode {
+  overflow: hidden;
+}
+
+body.focus-mode .layout {
+  min-height: 100vh;
+  height: 100vh;
+  padding: 0;
+  gap: 0;
+}
+
+body.focus-mode .layout > .panel:last-child {
+  border-radius: 0;
+  border: 0;
+  min-height: 100vh;
+}
+
+body.focus-mode .layout > .panel:last-child .panel-header {
+  background: #0d1422;
+}
+
+body.focus-mode #scene {
+  min-height: calc(100vh - 44px);
 }

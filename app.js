@@ -29,6 +29,7 @@ const runBtn = document.getElementById("runBtn");
 const fullscreenBtn = document.getElementById("fullscreenBtn");
 const sandboxBtn = document.getElementById("sandboxBtn");
 const roomInputEl = document.getElementById("roomInput");
+const serverInputEl = document.getElementById("serverInput");
 const connectBtn = document.getElementById("connectBtn");
 const mpStatusEl = document.getElementById("mpStatus");
 const canvas = document.getElementById("scene");
@@ -36,7 +37,10 @@ const canvas = document.getElementById("scene");
 const peerState = {
   id: `p_${Math.random().toString(36).slice(2, 10)}`,
   room: null,
+  transport: "broadcast",
+  wsUrl: "",
   channel: null,
+  socket: null,
   timer: null,
   syncTimeout: null,
   awaitingWorldSync: false,
@@ -93,13 +97,21 @@ const world = {
   touchHandlers: new Map(),
   touchActive: new Set(),
   touchLastFired: new Map(),
-  touchCooldownMs: 120
+  touchCooldownMs: 120,
+  triggerEnterHandlers: new Map(),
+  triggerExitHandlers: new Map(),
+  triggerActive: new Set()
 };
 
 editorEl.value = defaults.luau;
+const wsQuery = new URLSearchParams(window.location.search).get("ws");
+if (wsQuery) {
+  serverInputEl.value = wsQuery;
+}
 
 if (new URLSearchParams(window.location.search).get("sandbox") === "1") {
-  document.body.classList.add("sandbox-mode");
+  document.body.classList.add("focus-mode");
+  sandboxBtn.textContent = "Exit Focus";
 }
 
 setMultiplayerStatus("offline");
@@ -113,8 +125,8 @@ runBtn.addEventListener("click", () => {
   const code = editorEl.value;
   const result = runScript(language, code);
   logsEl.textContent = result.join("\n");
-  if (peerState.channel) {
-    postPeerMessage({ type: "run_script", language, code });
+  if (peerState.channel || peerState.socket) {
+    sendPeerMessage({ type: "run_script", language, code });
   }
 });
 
@@ -128,13 +140,24 @@ fullscreenBtn.addEventListener("click", () => {
 });
 
 sandboxBtn.addEventListener("click", () => {
-  const url = `${window.location.pathname}?sandbox=1`;
-  window.open(url, "_blank", "noopener,noreferrer");
+  if (document.body.classList.contains("focus-mode")) {
+    exitFocusMode();
+  } else {
+    enterFocusMode();
+  }
+});
+
+document.addEventListener("fullscreenchange", () => {
+  world.engine?.resize();
+  if (!document.fullscreenElement && document.body.classList.contains("focus-mode")) {
+    sandboxBtn.textContent = "Focus Mode";
+  }
 });
 
 connectBtn.addEventListener("click", () => {
   const room = (roomInputEl.value || "main").trim().toLowerCase();
-  connectRoom(room || "main");
+  const wsUrl = (serverInputEl.value || "").trim();
+  connectRoom(room || "main", wsUrl);
 });
 
 window.addEventListener("keydown", (event) => world.keys.add(event.code));
@@ -144,7 +167,27 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "KeyV") {
     toggleViewMode();
   }
+  if (event.code === "Escape" && document.body.classList.contains("focus-mode") && !document.fullscreenElement) {
+    exitFocusMode();
+  }
 });
+
+function enterFocusMode() {
+  document.body.classList.add("focus-mode");
+  sandboxBtn.textContent = "Exit Focus";
+  const panel = canvas.closest(".panel");
+  panel?.requestFullscreen?.().catch?.(() => {});
+  setTimeout(() => world.engine?.resize(), 80);
+}
+
+function exitFocusMode() {
+  document.body.classList.remove("focus-mode");
+  sandboxBtn.textContent = "Focus Mode";
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.().catch?.(() => {});
+  }
+  setTimeout(() => world.engine?.resize(), 80);
+}
 
 function setupScene() {
   world.engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true });
@@ -216,8 +259,13 @@ function executeCommand(fn, args, logs) {
     return true;
   }
   if (fn === "joinroom") {
-    connectRoom(String(args[0] ?? "main"));
+    connectRoom(String(args[0] ?? "main"), String(args[1] ?? peerState.wsUrl ?? ""));
     logs.push(`[mp] joined room '${peerState.room}'`);
+    return true;
+  }
+  if (fn === "setserver") {
+    setServerUrl(String(args[0] ?? ""));
+    logs.push(`[mp] server=${peerState.wsUrl || "broadcast-only"}`);
     return true;
   }
   if (fn === "disconnectroom") {
@@ -464,6 +512,34 @@ function executeCommand(fn, args, logs) {
   if (fn === "setanchored") {
     setAnchored(String(args[0] ?? ""), args[1] ?? true);
     logs.push("[part] setAnchored");
+    return true;
+  }
+  if (fn === "createtrigger") {
+    const name = String(args[0] ?? `Trigger${world.spawnIndex + 1}`);
+    const x = Number(args[1] ?? 0);
+    const y = Number(args[2] ?? 1);
+    const z = Number(args[3] ?? 0);
+    const sx = Number(args[4] ?? 3);
+    const sy = Number(args[5] ?? 2);
+    const sz = Number(args[6] ?? 3);
+    const color = String(args[7] ?? "#00ffaa");
+    createTrigger(name, x, y, z, sx, sy, sz, color);
+    logs.push("[trigger] createTrigger");
+    return true;
+  }
+  if (fn === "onenter") {
+    onEnter(String(args[0] ?? ""), String(args[1] ?? ""));
+    logs.push("[trigger] onEnter");
+    return true;
+  }
+  if (fn === "onexit") {
+    onExit(String(args[0] ?? ""), String(args[1] ?? ""));
+    logs.push("[trigger] onExit");
+    return true;
+  }
+  if (fn === "cleartrigger") {
+    clearTrigger(String(args[0] ?? ""));
+    logs.push("[trigger] clearTrigger");
     return true;
   }
   if (fn === "ontouched") {
@@ -759,11 +835,25 @@ function clearWorld() {
   world.touchHandlers.clear();
   world.touchActive.clear();
   world.touchLastFired.clear();
+  world.triggerEnterHandlers.clear();
+  world.triggerExitHandlers.clear();
+  world.triggerActive.clear();
   world.spawnIndex = 0;
 }
 
 function spawnPart(name, x, y, z, size, color) {
   spawnBlock(name, x, y, z, size, size, size, color);
+}
+
+function createTrigger(name, x, y, z, sx, sy, sz, color = "#00ffaa") {
+  spawnBlock(name, x, y, z, sx, sy, sz, color);
+  const mesh = getPart(String(name));
+  if (!mesh) return;
+  mesh.metadata = mesh.metadata || {};
+  mesh.metadata.isTrigger = true;
+  mesh.metadata.anchored = true;
+  setPartTransparency(mesh.name, 0.6);
+  setPartMaterial(mesh.name, "neon");
 }
 
 function spawnBlock(name, x, y, z, sx, sy, sz, color) {
@@ -773,6 +863,7 @@ function spawnBlock(name, x, y, z, sx, sy, sz, color) {
   mesh.position.set(x, y, z);
   mesh.metadata = {
     anchored: true,
+    isTrigger: false,
     velocityY: 0,
     spinDegPerSec: new BABYLON.Vector3(0, 0, 0),
     pulse: null,
@@ -796,6 +887,7 @@ function clonePart(sourceName, newName) {
   const srcMeta = src.metadata || {};
   box.metadata = {
     anchored: srcMeta.anchored !== false,
+    isTrigger: srcMeta.isTrigger === true,
     velocityY: Number(srcMeta.velocityY || 0),
     spinDegPerSec: srcMeta.spinDegPerSec ? srcMeta.spinDegPerSec.clone() : new BABYLON.Vector3(0, 0, 0),
     pulse: null,
@@ -814,6 +906,26 @@ function renamePart(oldName, newName) {
   const mesh = getPart(oldName);
   const target = String(newName || "").trim();
   if (!mesh || !target || world.parts.has(target)) return;
+  if (world.touchHandlers.has(mesh.name)) {
+    world.touchHandlers.set(target, world.touchHandlers.get(mesh.name));
+    world.touchHandlers.delete(mesh.name);
+  }
+  if (world.triggerEnterHandlers.has(mesh.name)) {
+    world.triggerEnterHandlers.set(target, world.triggerEnterHandlers.get(mesh.name));
+    world.triggerEnterHandlers.delete(mesh.name);
+  }
+  if (world.triggerExitHandlers.has(mesh.name)) {
+    world.triggerExitHandlers.set(target, world.triggerExitHandlers.get(mesh.name));
+    world.triggerExitHandlers.delete(mesh.name);
+  }
+  if (world.touchActive.has(mesh.name)) {
+    world.touchActive.delete(mesh.name);
+    world.touchActive.add(target);
+  }
+  if (world.triggerActive.has(mesh.name)) {
+    world.triggerActive.delete(mesh.name);
+    world.triggerActive.add(target);
+  }
   world.parts.delete(mesh.name);
   mesh.name = target;
   world.parts.set(target, mesh);
@@ -826,6 +938,9 @@ function destroyPart(name) {
   world.touchHandlers.delete(mesh.name);
   world.touchActive.delete(mesh.name);
   world.touchLastFired.delete(mesh.name);
+  world.triggerEnterHandlers.delete(mesh.name);
+  world.triggerExitHandlers.delete(mesh.name);
+  world.triggerActive.delete(mesh.name);
   world.parts.delete(mesh.name);
   mesh.dispose();
 }
@@ -960,6 +1075,28 @@ function clearTouched(name) {
   world.touchHandlers.delete(partName);
 }
 
+function onEnter(name, action) {
+  const partName = String(name || "").trim();
+  const text = String(action || "").trim();
+  if (!partName || !text) return;
+  world.triggerEnterHandlers.set(partName, text);
+}
+
+function onExit(name, action) {
+  const partName = String(name || "").trim();
+  const text = String(action || "").trim();
+  if (!partName || !text) return;
+  world.triggerExitHandlers.set(partName, text);
+}
+
+function clearTrigger(name) {
+  const partName = String(name || "").trim();
+  if (!partName) return;
+  world.triggerEnterHandlers.delete(partName);
+  world.triggerExitHandlers.delete(partName);
+  world.triggerActive.delete(partName);
+}
+
 function processTouchedEvents() {
   if (!world.playerRoot) return;
   const x = world.playerRoot.position.x;
@@ -996,6 +1133,53 @@ function processTouchedEvents() {
   }
 
   world.touchActive = nextActive;
+}
+
+function processTriggerEvents() {
+  if (!world.playerRoot) return;
+  const x = world.playerRoot.position.x;
+  const y = world.playerRoot.position.y;
+  const z = world.playerRoot.position.z;
+  const feet = y - world.standHeight;
+  const head = y + world.headOffset;
+  const activeNow = new Set();
+
+  for (const [name, mesh] of world.parts.entries()) {
+    if (!mesh || mesh.isDisposed() || !mesh.metadata?.isTrigger) continue;
+    const halfX = mesh.scaling.x * 0.5;
+    const halfY = mesh.scaling.y * 0.5;
+    const halfZ = mesh.scaling.z * 0.5;
+    const minX = mesh.position.x - halfX;
+    const maxX = mesh.position.x + halfX;
+    const minY = mesh.position.y - halfY;
+    const maxY = mesh.position.y + halfY;
+    const minZ = mesh.position.z - halfZ;
+    const maxZ = mesh.position.z + halfZ;
+    const overlap =
+      x + world.collisionRadius > minX &&
+      x - world.collisionRadius < maxX &&
+      head > minY &&
+      feet < maxY &&
+      z + world.collisionRadius > minZ &&
+      z - world.collisionRadius < maxZ;
+    if (overlap) activeNow.add(name);
+  }
+
+  for (const name of activeNow) {
+    if (!world.triggerActive.has(name)) {
+      const action = world.triggerEnterHandlers.get(name);
+      if (action) fireTouchedAction(name, action);
+    }
+  }
+
+  for (const name of world.triggerActive) {
+    if (!activeNow.has(name)) {
+      const action = world.triggerExitHandlers.get(name);
+      if (action) fireTouchedAction(name, action);
+    }
+  }
+
+  world.triggerActive = activeNow;
 }
 
 function fireTouchedAction(partName, action) {
@@ -1110,6 +1294,7 @@ function updatePlayer(dt) {
   }
 
   processTouchedEvents();
+  processTriggerEvents();
 }
 
 function moveTowards(current, target, maxDelta) {
@@ -1122,6 +1307,7 @@ function collidesAt(x, z, y) {
   const head = y + world.headOffset;
   for (const mesh of world.parts.values()) {
     if (!mesh || mesh.isDisposed()) continue;
+    if (mesh.metadata?.isTrigger) continue;
     const halfX = mesh.scaling.x * 0.5;
     const halfY = mesh.scaling.y * 0.5;
     const halfZ = mesh.scaling.z * 0.5;
@@ -1146,6 +1332,7 @@ function computeGroundY(x, z, prevY, nextY) {
   const nextFeet = nextY - world.standHeight;
   for (const mesh of world.parts.values()) {
     if (!mesh || mesh.isDisposed()) continue;
+    if (mesh.metadata?.isTrigger) continue;
     const halfX = mesh.scaling.x * 0.5;
     const halfY = mesh.scaling.y * 0.5;
     const halfZ = mesh.scaling.z * 0.5;
@@ -1167,6 +1354,7 @@ function computeGroundY(x, z, prevY, nextY) {
 function updateDynamicParts(dt) {
   for (const mesh of world.dynamicParts) {
     if (!mesh || mesh.isDisposed()) continue;
+    if (mesh.metadata?.isTrigger) continue;
     mesh.metadata = mesh.metadata || {};
     mesh.metadata.velocityY = Number(mesh.metadata.velocityY || 0) + world.gravity * dt;
     mesh.position.y += mesh.metadata.velocityY * dt;
@@ -1195,28 +1383,59 @@ function updateAnimations(dt) {
   }
 }
 
-function connectRoom(roomName) {
+function connectRoom(roomName, wsUrl = "") {
   const room = String(roomName || "main").trim().toLowerCase();
   if (!room) return;
   disconnectRoom(false);
+  setServerUrl(wsUrl || serverInputEl.value || "");
   peerState.room = room;
   peerState.awaitingWorldSync = true;
-  peerState.channel = new BroadcastChannel(`boblox_room_${room}`);
-  peerState.channel.onmessage = handlePeerMessage;
+
+  const shouldUseWs = Boolean(peerState.wsUrl);
+  if (shouldUseWs) {
+    peerState.transport = "websocket";
+    peerState.socket = new WebSocket(peerState.wsUrl);
+    peerState.socket.addEventListener("open", () => {
+      sendTransportMessage({ type: "join", room, id: peerState.id });
+      onConnectedTransport(room);
+    });
+    peerState.socket.addEventListener("message", (event) => {
+      try {
+        const data = JSON.parse(String(event.data || "{}"));
+        handlePeerMessageData(data);
+      } catch (_) {}
+    });
+    peerState.socket.addEventListener("close", () => {
+      if (peerState.room === room) {
+        setMultiplayerStatus(`offline:${room}`);
+      }
+    });
+    peerState.socket.addEventListener("error", () => {
+      setMultiplayerStatus(`ws-error:${room}`);
+    });
+  } else {
+    peerState.transport = "broadcast";
+    peerState.channel = new BroadcastChannel(`boblox_room_${room}`);
+    peerState.channel.onmessage = (event) => handlePeerMessageData(event.data);
+    onConnectedTransport(room);
+  }
+}
+
+function onConnectedTransport(room) {
   peerState.timer = window.setInterval(() => maybeBroadcastLocalState(true), 120);
   if (peerState.syncTimeout) clearTimeout(peerState.syncTimeout);
   peerState.syncTimeout = window.setTimeout(() => {
     if (peerState.awaitingWorldSync) {
       peerState.awaitingWorldSync = false;
-      setMultiplayerStatus(`connected:${room}`);
+      setMultiplayerStatus(`connected:${room}:${peerState.transport}`);
     }
-  }, 1200);
-  setMultiplayerStatus(`syncing:${room}`);
-  postPeerMessage({ type: "hello", state: getLocalSnapshot() });
+  }, 1400);
+  setMultiplayerStatus(`syncing:${room}:${peerState.transport}`);
+  sendPeerMessage({ type: "hello", state: getLocalSnapshot() });
 }
 
 function disconnectRoom(updateStatus = true) {
-  postPeerMessage({ type: "bye", id: peerState.id });
+  sendPeerMessage({ type: "bye", id: peerState.id });
   if (peerState.timer) {
     clearInterval(peerState.timer);
     peerState.timer = null;
@@ -1225,12 +1444,17 @@ function disconnectRoom(updateStatus = true) {
     peerState.channel.close();
     peerState.channel = null;
   }
+  if (peerState.socket) {
+    peerState.socket.close();
+    peerState.socket = null;
+  }
   if (peerState.syncTimeout) {
     clearTimeout(peerState.syncTimeout);
     peerState.syncTimeout = null;
   }
   peerState.awaitingWorldSync = false;
   peerState.room = null;
+  peerState.transport = "broadcast";
   for (const remote of peerState.remotes.values()) {
     remote.root.dispose();
   }
@@ -1238,13 +1462,13 @@ function disconnectRoom(updateStatus = true) {
   if (updateStatus) setMultiplayerStatus("offline");
 }
 
-function handlePeerMessage(event) {
-  const data = event.data;
+function handlePeerMessageData(data) {
   if (!data || data.id === peerState.id) return;
+  if (data.type === "join" || data.type === "joined") return;
   if (data.type === "hello") {
     upsertRemotePlayer(data.id, data.state);
-    postPeerMessage({ type: "state", state: getLocalSnapshot() });
-    postPeerMessage({ type: "room_state", targetId: data.id, snapshot: buildWorldSnapshot() });
+    sendPeerMessage({ type: "state", state: getLocalSnapshot() });
+    sendPeerMessage({ type: "room_state", targetId: data.id, snapshot: buildWorldSnapshot() });
     return;
   }
   if (data.type === "state") {
@@ -1261,7 +1485,7 @@ function handlePeerMessage(event) {
       clearTimeout(peerState.syncTimeout);
       peerState.syncTimeout = null;
     }
-    setMultiplayerStatus(`connected:${peerState.room}`);
+    setMultiplayerStatus(`connected:${peerState.room}:${peerState.transport}`);
     return;
   }
   if (data.type === "run_script") {
@@ -1277,11 +1501,11 @@ function handlePeerMessage(event) {
 }
 
 function maybeBroadcastLocalState(force = false) {
-  if (!peerState.channel || !world.playerRoot) return;
+  if ((!peerState.channel && !peerState.socket) || !world.playerRoot) return;
   const now = performance.now();
   if (!force && now - peerState.lastSentAt < 100) return;
   peerState.lastSentAt = now;
-  postPeerMessage({ type: "state", state: getLocalSnapshot() });
+  sendPeerMessage({ type: "state", state: getLocalSnapshot() });
 }
 
 function broadcastNow() {
@@ -1301,9 +1525,20 @@ function getLocalSnapshot() {
   };
 }
 
-function postPeerMessage(payload) {
-  if (!peerState.channel) return;
-  peerState.channel.postMessage({ ...payload, id: peerState.id, ts: Date.now() });
+function sendPeerMessage(payload) {
+  sendTransportMessage({ ...payload, id: peerState.id, room: peerState.room, ts: Date.now() });
+}
+
+function sendTransportMessage(payload) {
+  if (peerState.transport === "websocket") {
+    if (peerState.socket && peerState.socket.readyState === WebSocket.OPEN) {
+      peerState.socket.send(JSON.stringify(payload));
+    }
+    return;
+  }
+  if (peerState.channel) {
+    peerState.channel.postMessage(payload);
+  }
 }
 
 function upsertRemotePlayer(id, state) {
@@ -1351,6 +1586,14 @@ function setMultiplayerStatus(text) {
   mpStatusEl.textContent = text;
 }
 
+function setServerUrl(url) {
+  const value = String(url || "").trim();
+  peerState.wsUrl = value;
+  if (serverInputEl) {
+    serverInputEl.value = value;
+  }
+}
+
 function buildWorldSnapshot() {
   const parts = [];
   for (const [name, mesh] of world.parts.entries()) {
@@ -1372,6 +1615,7 @@ function buildWorldSnapshot() {
       emissive: colorToHex(mat.emissiveColor, "#000000"),
       alpha: Number.isFinite(mat.alpha) ? mat.alpha : 1,
       anchored: meta.anchored !== false,
+      isTrigger: meta.isTrigger === true,
       materialKind: String(meta.materialKind || "standard"),
       spin: meta.spinDegPerSec
         ? { x: meta.spinDegPerSec.x, y: meta.spinDegPerSec.y, z: meta.spinDegPerSec.z }
@@ -1401,6 +1645,8 @@ function buildWorldSnapshot() {
     firstPersonRotateWithMouse: world.firstPersonRotateWithMouse,
     thirdPersonRotateWithMouse: world.thirdPersonRotateWithMouse,
     touchHandlers: Object.fromEntries(world.touchHandlers.entries()),
+    triggerEnterHandlers: Object.fromEntries(world.triggerEnterHandlers.entries()),
+    triggerExitHandlers: Object.fromEntries(world.triggerExitHandlers.entries()),
     parts
   };
 }
@@ -1428,6 +1674,16 @@ function applyWorldSnapshot(snapshot) {
   for (const [partName, action] of Object.entries(handlers)) {
     onTouched(partName, String(action));
   }
+  const enterHandlers =
+    snapshot.triggerEnterHandlers && typeof snapshot.triggerEnterHandlers === "object" ? snapshot.triggerEnterHandlers : {};
+  for (const [partName, action] of Object.entries(enterHandlers)) {
+    onEnter(partName, String(action));
+  }
+  const exitHandlers =
+    snapshot.triggerExitHandlers && typeof snapshot.triggerExitHandlers === "object" ? snapshot.triggerExitHandlers : {};
+  for (const [partName, action] of Object.entries(exitHandlers)) {
+    onExit(partName, String(action));
+  }
 
   const parts = Array.isArray(snapshot.parts) ? snapshot.parts : [];
   for (const part of parts) {
@@ -1449,6 +1705,13 @@ function applyWorldSnapshot(snapshot) {
     setPartTransparency(name, 1 - Number(part.alpha ?? 1));
     setPartEmissive(name, String(part.emissive ?? "#000000"), 1);
     setAnchored(name, part.anchored !== false);
+    if (part.isTrigger === true) {
+      const mesh = getPart(name);
+      if (mesh) {
+        mesh.metadata = mesh.metadata || {};
+        mesh.metadata.isTrigger = true;
+      }
+    }
     if (part.spin) {
       spinPart(name, Number(part.spin.x ?? 0), Number(part.spin.y ?? 0), Number(part.spin.z ?? 0));
     }

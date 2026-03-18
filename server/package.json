@@ -1,0 +1,12 @@
+{
+  "name": "boblox-ws-relay",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "start": "node ws-relay-server.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

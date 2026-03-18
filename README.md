@@ -13,7 +13,9 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 
 - `print("text")`
 - `joinRoom("main")`
+- `joinRoom("main", "wss://your-server/ws")` (optional WS URL)
 - `disconnectRoom()`
+- `setServer("wss://your-server/ws")`
 - `createPlayer("Noob")`
 - `setPlayerColor("#2e86de", "#f2d2a5")`
 - `setSpeed(12)`
@@ -60,6 +62,10 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `onTouched("Pad", "jump:12")`
 - `onTouched("Portal", "teleport:0,3,0")`
 - `clearTouched("Pad")`
+- `createTrigger("Gate", 8, 1, 0, 3, 2, 3, "#00ffaa")`
+- `onEnter("Gate", "print:Entered")`
+- `onExit("Gate", "print:Exited")`
+- `clearTrigger("Gate")`
 - `spinPart("Box", 0, 45, 0)` and `stopSpin("Box")`
 - `pulsePart("Box", 2.0, 0.9, 1.1)` and `stopPulse("Box")`
 - `listParts()`
@@ -70,7 +76,8 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 ## Sandbox & Fullscreen
 
 - `Fullscreen` button: opens the 3D viewport in native fullscreen.
-- `Sandbox Window` button: opens a new window (`?sandbox=1`) with only the sandbox view.
+- `Focus Mode` button: hides editor UI and switches to full viewport mode in the same tab.
+- `Esc` exits fullscreen; pressing `Esc` again exits focus mode.
 
 ## Multiplayer (no backend)
 
@@ -79,6 +86,15 @@ Static GitHub Pages sandbox with Roblox-like scripting commands.
 - `Run` now broadcasts the script to all players in the same room, so code executes for everyone.
 - New players now receive current shared world state on join (floor, sky, parts, materials, animations).
 - This uses `BroadcastChannel`, so it works between tabs/windows of the same site origin (browser-local).
+
+## Multiplayer Between Devices (WebSocket)
+
+1. Run relay server from `server/`:
+   - `npm install`
+   - `npm start`
+2. Expose it on public URL (for example via VPS/Cloud/Render/Fly).
+3. In UI, put websocket URL into `server` field and connect room.
+4. Now rooms work across different devices/browsers.
 
 ## Controls
 

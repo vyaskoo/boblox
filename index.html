@@ -20,13 +20,14 @@
           <div class="right">
             <button id="runBtn" type="button">Run</button>
             <button id="fullscreenBtn" type="button">Fullscreen</button>
-            <button id="sandboxBtn" type="button">Sandbox Window</button>
+            <button id="sandboxBtn" type="button">Focus Mode</button>
           </div>
         </header>
         <textarea id="editor" spellcheck="false"></textarea>
         <div class="multiplayer">
           <label for="roomInput">Room</label>
           <input id="roomInput" value="main" />
+          <input id="serverInput" placeholder="wss://server.example/ws (optional)" />
           <button id="connectBtn" type="button">Connect</button>
           <span id="mpStatus">offline</span>
         </div>
@@ -35,8 +36,9 @@
           "#44aaff"), clonePart("Box", "Box2"), setPartTransparency("Box2", 0.35), spinPart("Box", 0, 45, 0),
           pulsePart("Pad", 2, 0.9, 1.1), setViewMode("first"), setMouseSensitivity(1.2),
           setCameraPitchLimits(-75, 80), setSprintMultiplier(1.8), setAcceleration(50), setDeceleration(34),
-          setCoyoteTime(0.12), setJumpBuffer(0.14), onTouched("Pad", "print:Checkpoint"), listParts(), focusPart("Box"),
-          resetCamera(), clearWorld()
+          setCoyoteTime(0.12), setJumpBuffer(0.14), onTouched("Pad", "print:Checkpoint"),
+          createTrigger("Gate", 8, 1, 0, 3, 2, 3), onEnter("Gate", "print:Entered"), onExit("Gate", "print:Exited"),
+          listParts(), focusPart("Box"), resetCamera(), clearWorld()
         </div>
         <pre id="logs">ready</pre>
       </section>
@@ -48,6 +50,6 @@
     </main>
 
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
-    <script src="./app.js?v=10"></script>
+    <script src="./app.js?v=12"></script>
   </body>
 </html>
